@@ -6,7 +6,7 @@
 typedef double Value;
 
 typedef struct {
-  size_t cap, cnt;
+  int cap, cnt;
   Value *values;
 } ValueArray;
 

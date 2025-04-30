@@ -38,6 +38,16 @@ int disassembleInst(Chunk *chunk, int offset) {
   switch (inst) {
   case OP_CONSTANT:
     return constantInst("OP_CONSTANT", chunk, offset);
+  case OP_ADD:
+    return simpleInst("OP_ADD", offset);
+  case OP_SUBTRACT:
+    return simpleInst("OP_SUBTRACT", offset);
+  case OP_MULTIPLY:
+    return simpleInst("OP_MULTIPLY", offset);
+  case OP_DIVIDE:
+    return simpleInst("OP_DIVIDE", offset);
+  case OP_NEGATE:
+    return simpleInst("OP_NEGATE", offset);
   case OP_RETURN:
     return simpleInst("OP_RETURN", offset);
   default:

@@ -30,6 +30,7 @@ int addConst(Chunk *chunk, Value value) {
 
 void freeChunk(Chunk *chunk) {
   FREE_ARRAY(uint8_t, chunk->code, chunk->cap);
+  FREE_ARRAY(int, chunk->lines, chunk->cap);
   freeValueArray(&chunk->constants);
   initChunk(chunk);
 }

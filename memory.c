@@ -3,6 +3,8 @@
 #include <stdlib.h>
 
 void *reallocate(void *ptr, size_t oldSize, size_t newSize) {
+  (void)oldSize; // tmp while oldSize not used
+
   if (newSize == 0) {
     free(ptr);
     return NULL;
