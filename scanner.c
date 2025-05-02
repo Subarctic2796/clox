@@ -1,6 +1,5 @@
 #include "scanner.h"
-#include "common.h"
-#include "compiler.h"
+#include <stdbool.h>
 #include <string.h>
 
 typedef struct {

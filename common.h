@@ -7,7 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define LOX_DEBUG
+
+#ifdef LOX_DEBUG
 #define DEBUG_PRINT_CODE
 #define DEBUG_TRACE_EXECUTION
+#endif
 
 #endif // INCLUDE_CLOX_COMMON_H_
