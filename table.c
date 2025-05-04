@@ -28,15 +28,16 @@ static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
     Entry *entry = &entries[idx];
     if (entry->key == NULL) {
       if (IS_NIL(entry->value)) {
-        // empty entry
+        // Empty entry.
         return tombstone != NULL ? tombstone : entry;
       } else {
+        // We found a tombstone.
         if (tombstone == NULL) {
           tombstone = entry;
         }
       }
     } else if (entry->key == key) {
-      // found the key
+      // We found the key.
       return entry;
     }
 
@@ -144,5 +145,6 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
       // we found it
       return entry->key;
     }
+    idx = (idx + 1) % table->cap;
   }
 }
