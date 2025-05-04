@@ -18,6 +18,12 @@ static int simpleInst(const char *name, int offset) {
   return offset + 1;
 }
 
+static int byteInst(const char *name, Chunk *chunk, int offset) {
+  uint8_t slot = chunk->code[offset + 1];
+  printf("%-16s %4d\n", name, slot);
+  return offset + 2;
+}
+
 static int constantInst(const char *name, Chunk *chunk, int offset) {
   uint8_t constIdx = chunk->code[offset + 1];
   printf("%-16s %4d '", name, constIdx);
@@ -42,6 +48,10 @@ int disassembleInst(Chunk *chunk, int offset) {
     return simpleInst("OP_NIL", offset);
   case OP_FALSE:
     return simpleInst("OP_FALSE", offset);
+  case OP_GET_LOCAL:
+    return byteInst("OP_GET_LOCAL", chunk, offset);
+  case OP_SET_LOCAL:
+    return byteInst("OP_SET_LOCAL", chunk, offset);
   case OP_GET_GLOBAL:
     return constantInst("OP_GET_GLOBAL", chunk, offset);
   case OP_DEFINE_GLOBAL:

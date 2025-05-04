@@ -9,9 +9,11 @@
 
 #define LOX_DEBUG
 
-#ifdef LOX_DEBUG
+#ifdef LOX_DEBUG // LOX_DEBUG
 #define DEBUG_PRINT_CODE
 #define DEBUG_TRACE_EXECUTION
-#endif
+#endif // LOX_DEBUG
+
+#define UINT8_COUNT (UINT8_MAX + 1)
 
 #endif // INCLUDE_CLOX_COMMON_H_

@@ -9,7 +9,9 @@ typedef enum {
   OP_NIL,
   OP_TRUE,
   OP_FALSE,
-  OP_POP,
+  OP_POP, // easy optimization OP_POPN, pop n slots at once
+  OP_GET_LOCAL,
+  OP_SET_LOCAL,
   OP_GET_GLOBAL,
   OP_DEFINE_GLOBAL,
   OP_SET_GLOBAL,
