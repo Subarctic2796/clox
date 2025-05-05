@@ -4,7 +4,7 @@
 
 typedef struct {
   const char *start;
-  const char *current;
+  const char *cur;
   int line;
 } Scanner;
 
@@ -12,7 +12,7 @@ Scanner scanner;
 
 void initScanner(const char *source) {
   scanner.start = source;
-  scanner.current = source;
+  scanner.cur = source;
   scanner.line = 1;
 }
 
@@ -20,29 +20,29 @@ static inline bool isAlpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
-static inline bool isAtEnd() { return *scanner.current == '\0'; }
+static inline bool isAtEnd() { return *scanner.cur == '\0'; }
 
 static inline char advance() {
-  scanner.current++;
-  return scanner.current[-1];
+  scanner.cur++;
+  return scanner.cur[-1];
 }
 
-static inline char peek() { return *scanner.current; }
+static inline char peek() { return *scanner.cur; }
 static inline char peekNext() {
   if (isAtEnd()) {
     return '\0';
   }
-  return scanner.current[1];
+  return scanner.cur[1];
 }
 
 static inline bool match(char expected) {
   if (isAtEnd()) {
     return false;
   }
-  if (*scanner.current != expected) {
+  if (*scanner.cur != expected) {
     return false;
   }
-  scanner.current++;
+  scanner.cur++;
   return true;
 }
 
@@ -50,7 +50,7 @@ static inline Token makeToken(TokenType type) {
   Token token = {
       .type = type,
       .start = scanner.start,
-      .length = (int)(scanner.current - scanner.start),
+      .length = (int)(scanner.cur - scanner.start),
       .line = scanner.line,
   };
   return token;
@@ -96,7 +96,7 @@ static inline void skipWhiteSpace() {
 
 static TokenType checkKeyword(int start, int length, const char *rest,
                               TokenType type) {
-  if (scanner.current - scanner.start == start + length &&
+  if (scanner.cur - scanner.start == start + length &&
       memcmp(scanner.start + start, rest, length) == 0) {
     return type;
   }
@@ -112,7 +112,7 @@ static TokenType identifierType() {
   case 'e':
     return checkKeyword(1, 3, "lse", TOKEN_ELSE);
   case 'f':
-    if (scanner.current - scanner.start > 1) {
+    if (scanner.cur - scanner.start > 1) {
       switch (scanner.start[1]) {
       case 'a':
         return checkKeyword(2, 3, "lse", TOKEN_FALSE);
@@ -136,7 +136,7 @@ static TokenType identifierType() {
   case 's':
     return checkKeyword(1, 4, "uper", TOKEN_SUPER);
   case 't':
-    if (scanner.current - scanner.start > 1) {
+    if (scanner.cur - scanner.start > 1) {
       switch (scanner.start[1]) {
       case 'h':
         return checkKeyword(2, 2, "is", TOKEN_THIS);
@@ -194,7 +194,7 @@ static Token makeString() {
 
 Token scanToken() {
   skipWhiteSpace();
-  scanner.start = scanner.current;
+  scanner.start = scanner.cur;
 
   if (isAtEnd()) {
     return makeToken(TOKEN_EOF);

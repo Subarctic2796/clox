@@ -24,6 +24,13 @@ static int byteInst(const char *name, Chunk *chunk, int offset) {
   return offset + 2;
 }
 
+static int jumpInst(const char *name, int sign, Chunk *chunk, int offset) {
+  uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
+  jump |= chunk->code[offset + 2];
+  printf("%-16s %4d -> %d\n", name, offset, offset + 3 + sign * jump);
+  return offset + 3;
+}
+
 static int constantInst(const char *name, Chunk *chunk, int offset) {
   uint8_t constIdx = chunk->code[offset + 1];
   printf("%-16s %4d '", name, constIdx);
@@ -82,6 +89,12 @@ int disassembleInst(Chunk *chunk, int offset) {
     return simpleInst("OP_PRINT", offset);
   case OP_POP:
     return simpleInst("OP_POP", offset);
+  case OP_JUMP:
+    return jumpInst("OP_JUMP", 1, chunk, offset);
+  case OP_JUMP_IF_FALSE:
+    return jumpInst("OP_JUMP_IF_FALSE", 1, chunk, offset);
+  case OP_LOOP:
+    return jumpInst("OP_LOOP", -1, chunk, offset);
   case OP_RETURN:
     return simpleInst("OP_RETURN", offset);
   default:
