@@ -10,4 +10,5 @@ make build
 ```
 
 # Currently on
-Chp 24
+need to fix segfault in fib.lox
+Chp 25

@@ -1,9 +1,9 @@
-#include "debug.h"
-#include "chunk.h"
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 
+#include "chunk.h"
+#include "debug.h"
 #include "value.h"
 
 void disassembleChunk(Chunk *chunk, const char *name) {
@@ -47,7 +47,7 @@ int disassembleInst(Chunk *chunk, int offset) {
     printf("%4d ", chunk->lines[offset]);
   }
 
-  uint8_t inst = chunk->code[offset];
+  OpCode inst = (OpCode)chunk->code[offset];
   switch (inst) {
   case OP_CONSTANT:
     return constantInst("OP_CONSTANT", chunk, offset);
@@ -95,6 +95,8 @@ int disassembleInst(Chunk *chunk, int offset) {
     return jumpInst("OP_JUMP_IF_FALSE", 1, chunk, offset);
   case OP_LOOP:
     return jumpInst("OP_LOOP", -1, chunk, offset);
+  case OP_CALL:
+    return byteInst("OP_CALL", chunk, offset);
   case OP_RETURN:
     return simpleInst("OP_RETURN", offset);
   default:

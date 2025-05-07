@@ -1,6 +1,7 @@
 .PHONY: build clean run
+
 BIN = clox
-CFLAGS = -Wall -Wextra -ggdb -std=c99
+CFLAGS = -Wall -Wextra -Wpedantic -ggdb -std=c99
 EXTRA_FLAGS = -Wswitch-enum
 DEBUG_FLAGS = -ggdb -DLOX_DEBUG
 
