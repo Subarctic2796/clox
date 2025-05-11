@@ -8,7 +8,6 @@
 
 void *reallocate(void *ptr, size_t oldSize, size_t newSize) {
   (void)oldSize; // tmp while oldSize not used
-
   if (newSize == 0) {
     free(ptr);
     return NULL;
@@ -41,7 +40,7 @@ static void freeObject(Obj *object) {
   }
 }
 
-void freeObjects() {
+void freeObjects(void) {
   Obj *object = vm.objects;
   while (object != NULL) {
     Obj *next = object->next;

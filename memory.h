@@ -19,6 +19,6 @@
   reallocate((ptr), sizeof(type) * (oldCnt), 0)
 
 void *reallocate(void *ptr, size_t oldSize, size_t newSize);
-void freeObjects();
+void freeObjects(void);
 
 #endif // INCLUDE_CLOX_MEMORY_H_

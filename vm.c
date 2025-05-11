@@ -23,7 +23,7 @@ static Value clockNative(int argCnt, Value *args) {
   return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
-static void resetStack() {
+static void resetStack(void) {
   vm.stackTop = vm.stack;
   vm.frameCount = 0;
 }
@@ -60,7 +60,7 @@ static void defineNative(const char *name, NativeFn function) {
   pop(); // pop native ptr, on stack bc of GC
 }
 
-void initVM() {
+void initVM(void) {
   resetStack();
   vm.objects = NULL;
   initTable(&vm.globals);
@@ -68,7 +68,7 @@ void initVM() {
 
   defineNative("clock", clockNative);
 }
-void freeVM() {
+void freeVM(void) {
   freeTable(&vm.globals);
   freeTable(&vm.strings);
   freeObjects();
@@ -79,12 +79,12 @@ void push(Value value) {
   vm.stackTop++;
 }
 
-Value pop() {
+Value pop(void) {
   vm.stackTop--;
   return *vm.stackTop;
 }
 
-static inline Value peek(int dist) { return vm.stackTop[-1 - dist]; }
+static Value peek(int dist) { return vm.stackTop[-1 - dist]; }
 
 static bool call(ObjFunction *function, int argCnt) {
   if (argCnt != function->arity) {
@@ -129,7 +129,7 @@ static bool isFalsey(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 
-static void concatenate() {
+static void concatenate(void) {
   ObjString *b = AS_STRING(pop());
   ObjString *a = AS_STRING(pop());
   int length = a->length + b->length;
@@ -141,7 +141,7 @@ static void concatenate() {
   push(OBJ_VAL(result));
 }
 
-static InterpretResult run() {
+static InterpretResult run(void) {
   CallFrame *frame = &vm.frames[vm.frameCount - 1];
 
 #define READ_BYTE() (*frame->ip++)
@@ -263,13 +263,14 @@ static InterpretResult run() {
     case OP_NOT:
       push(BOOL_VAL(isFalsey(pop())));
       break;
-    case OP_NEGATE:
+    case OP_NEGATE: {
       if (!IS_NUMBER(peek(0))) {
         runtimeError("Operand must be a number");
         return INTERPRET_RUNTIME_ERR;
       }
       push(NUMBER_VAL(-AS_NUMBER(pop())));
       break;
+    }
     case OP_PRINT: {
       printValue(pop());
       printf("\n");

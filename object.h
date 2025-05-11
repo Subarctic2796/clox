@@ -48,7 +48,7 @@ struct ObjString {
   uint32_t hash;
 };
 
-ObjFunction *newFunction();
+ObjFunction *newFunction(void);
 ObjNative *newNative(NativeFn function);
 ObjString *takeString(char *chars, int length);
 ObjString *copyString(const char *chars, int length);

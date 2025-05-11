@@ -20,15 +20,15 @@ static inline bool isAlpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
-static inline bool isAtEnd() { return *scanner.cur == '\0'; }
+static inline bool isAtEnd(void) { return *scanner.cur == '\0'; }
 
-static inline char advance() {
+static inline char advance(void) {
   scanner.cur++;
   return scanner.cur[-1];
 }
 
-static inline char peek() { return *scanner.cur; }
-static inline char peekNext() {
+static inline char peek(void) { return *scanner.cur; }
+static inline char peekNext(void) {
   if (isAtEnd()) {
     return '\0';
   }
@@ -66,7 +66,7 @@ static inline Token errorToken(const char *msg) {
   return token;
 }
 
-static inline void skipWhiteSpace() {
+static inline void skipWhiteSpace(void) {
   for (;;) {
     char c = peek();
     switch (c) {
@@ -103,7 +103,7 @@ static TokenType checkKeyword(int start, int length, const char *rest,
   return TOKEN_IDENTIFIER;
 }
 
-static TokenType identifierType() {
+static TokenType identifierType(void) {
   switch (scanner.start[0]) {
   case 'a':
     return checkKeyword(1, 2, "nd", TOKEN_AND);
@@ -153,14 +153,14 @@ static TokenType identifierType() {
   return TOKEN_IDENTIFIER;
 }
 
-static Token makeIdent() {
+static Token makeIdent(void) {
   while (isAlpha(peek()) || isDigit(peek())) {
     advance();
   }
   return makeToken(identifierType());
 }
 
-static Token makeNumber() {
+static Token makeNumber(void) {
   while (isDigit(peek())) {
     advance();
   }
@@ -177,7 +177,7 @@ static Token makeNumber() {
   return makeToken(TOKEN_NUMBER);
 }
 
-static Token makeString() {
+static Token makeString(void) {
   while (peek() != '"' && !isAtEnd()) {
     if (peek() == '\n') {
       scanner.line++;
@@ -192,7 +192,7 @@ static Token makeString() {
   return makeToken(TOKEN_STRING);
 }
 
-Token scanToken() {
+Token scanToken(void) {
   skipWhiteSpace();
   scanner.start = scanner.cur;
 
