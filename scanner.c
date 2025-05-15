@@ -5,7 +5,7 @@
 typedef struct {
   const char *start;
   const char *cur;
-  int line;
+  size_t line;
 } Scanner;
 
 Scanner scanner;
@@ -94,8 +94,8 @@ static inline void skipWhiteSpace(void) {
   }
 }
 
-static TokenType checkKeyword(int start, int length, const char *rest,
-                              TokenType type) {
+static inline TokenType checkKeyword(int start, int length, const char *rest,
+                                     TokenType type) {
   if (scanner.cur - scanner.start == start + length &&
       memcmp(scanner.start + start, rest, length) == 0) {
     return type;
@@ -103,7 +103,7 @@ static TokenType checkKeyword(int start, int length, const char *rest,
   return TOKEN_IDENTIFIER;
 }
 
-static TokenType identifierType(void) {
+static inline TokenType identifierType(void) {
   switch (scanner.start[0]) {
   case 'a':
     return checkKeyword(1, 2, "nd", TOKEN_AND);
@@ -160,7 +160,7 @@ static Token makeIdent(void) {
   return makeToken(identifierType());
 }
 
-static Token makeNumber(void) {
+static inline Token makeNumber(void) {
   while (isDigit(peek())) {
     advance();
   }
@@ -177,7 +177,7 @@ static Token makeNumber(void) {
   return makeToken(TOKEN_NUMBER);
 }
 
-static Token makeString(void) {
+static inline Token makeString(void) {
   while (peek() != '"' && !isAtEnd()) {
     if (peek() == '\n') {
       scanner.line++;

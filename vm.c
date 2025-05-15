@@ -81,6 +81,7 @@ void initVM(void) {
 
   defineNative("clock", clockNative);
 }
+
 void freeVM(void) {
   freeTable(&vm.globals);
   freeTable(&vm.strings);
@@ -88,17 +89,9 @@ void freeVM(void) {
   freeObjects();
 }
 
-void push(Value value) {
-  *vm.stackTop = value;
-  vm.stackTop++;
-}
-
-Value pop(void) {
-  vm.stackTop--;
-  return *vm.stackTop;
-}
-
-static Value peek(int dist) { return vm.stackTop[-1 - dist]; }
+inline void push(Value value) { *vm.stackTop++ = value; }
+inline Value pop(void) { return *(--vm.stackTop); }
+static inline Value peek(int dist) { return vm.stackTop[-1 - dist]; }
 
 static bool call(ObjClosure *closure, int argCnt) {
   if (argCnt != closure->function->arity) {
@@ -157,7 +150,8 @@ static bool callValue(Value callee, int argCnt) {
   return false;
 }
 
-static bool invokeFromClass(ObjClass *klass, ObjString *name, int argCnt) {
+static inline bool invokeFromClass(ObjClass *klass, ObjString *name,
+                                   int argCnt) {
   Value method;
   if (!tableGet(&klass->methods, name, &method)) {
     runtimeError("Undefined property '%s'", name->chars);
@@ -238,7 +232,7 @@ static void defineMethod(ObjString *name) {
   pop();
 }
 
-static bool isFalsey(Value value) {
+static inline bool isFalsey(Value value) {
   return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 

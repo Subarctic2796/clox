@@ -7,6 +7,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define NAN_BOXING
+
 #define LOX_DEBUG
 
 #ifdef LOX_DEBUG // LOX_DEBUG

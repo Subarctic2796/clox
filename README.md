@@ -8,7 +8,3 @@ cd clox
 make build
 ./clox
 ```
-
-# Currently on
-need to fix segfault in fib.lox
-Chp 30

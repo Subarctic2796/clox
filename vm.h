@@ -46,7 +46,7 @@ extern VM vm;
 void initVM(void);
 void freeVM(void);
 InterpretResult interpret(const char *source);
-void push(Value value);
-Value pop(void);
+inline void push(Value value);
+inline Value pop(void);
 
 #endif // INCLUDE_CLOX_VM_H_

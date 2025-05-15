@@ -74,7 +74,7 @@ void markValue(Value value) {
   }
 }
 
-static void markArray(ValueArray *array) {
+static inline void markArray(ValueArray *array) {
   for (int i = 0; i < array->cnt; i++) {
     markValue(array->values[i]);
   }
@@ -197,7 +197,7 @@ static void markRoots(void) {
   markObject((Obj *)vm.initString);
 }
 
-static void traceReferences(void) {
+static inline void traceReferences(void) {
   while (vm.grayCnt > 0) {
     Obj *object = vm.grayStack[--vm.grayCnt];
     blackenObject(object);

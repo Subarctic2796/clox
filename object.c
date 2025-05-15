@@ -127,7 +127,7 @@ ObjUpvalue *newUpvalue(Value *slot) {
   return upvalue;
 }
 
-static void printFunction(ObjFunction *func) {
+static inline void printFunction(ObjFunction *func) {
   if (func->name == NULL) {
     printf("<script>");
     return;

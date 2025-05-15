@@ -81,7 +81,7 @@ Parser parser;
 Compiler *current = NULL;
 ClassCompiler *currentClass = NULL;
 
-static Chunk *currentChunk(void) { return &current->function->chunk; }
+static inline Chunk *currentChunk(void) { return &current->function->chunk; }
 
 static void errorAt(Token *token, const char *message) {
   if (parser.panicMode) {
@@ -102,10 +102,12 @@ static void errorAt(Token *token, const char *message) {
   parser.hadError = true;
 }
 
-static void error(const char *msg) { errorAt(&parser.previous, msg); }
-static void errorAtCurrent(const char *msg) { errorAt(&parser.current, msg); }
+static inline void error(const char *msg) { errorAt(&parser.previous, msg); }
+static inline void errorAtCurrent(const char *msg) {
+  errorAt(&parser.current, msg);
+}
 
-static void advance(void) {
+static inline void advance(void) {
   parser.previous = parser.current;
 
   for (;;) {
@@ -118,7 +120,7 @@ static void advance(void) {
   }
 }
 
-static void consume(TokenType type, const char *message) {
+static inline void consume(TokenType type, const char *message) {
   if (parser.current.type == type) {
     advance();
     return;
@@ -126,8 +128,8 @@ static void consume(TokenType type, const char *message) {
   errorAtCurrent(message);
 }
 
-static bool check(TokenType type) { return parser.current.type == type; }
-static bool match(TokenType type) {
+static inline bool check(TokenType type) { return parser.current.type == type; }
+static inline bool match(TokenType type) {
   if (!check(type)) {
     return false;
   }
@@ -135,11 +137,11 @@ static bool match(TokenType type) {
   return true;
 }
 
-static void emitByte(uint8_t byte) {
+static inline void emitByte(uint8_t byte) {
   writeChunk(currentChunk(), byte, parser.previous.line);
 }
 
-static void emitBytes(uint8_t byte1, uint8_t byte2) {
+static inline void emitBytes(uint8_t byte1, uint8_t byte2) {
   emitByte(byte1);
   emitByte(byte2);
 }
@@ -156,7 +158,7 @@ static void emitLoop(int loopStart) {
   emitByte(offset & 0xff);
 }
 
-static int emitJump(uint8_t inst) {
+static inline int emitJump(uint8_t inst) {
   emitByte(inst);
   emitByte(0xff);
   emitByte(0xff);
@@ -182,7 +184,7 @@ static uint8_t makeConstant(Value value) {
   return (uint8_t)constIdx;
 }
 
-static void emitConstant(Value value) {
+static inline void emitConstant(Value value) {
   emitBytes(OP_CONSTANT, makeConstant(value));
 }
 
@@ -239,7 +241,7 @@ static ObjFunction *endCompiler(void) {
   return function;
 }
 
-static void beginScope(void) { current->scopeDepth++; }
+static inline void beginScope(void) { current->scopeDepth++; }
 static void endScope(void) {
   current->scopeDepth--;
   while (current->localCount > 0 &&
@@ -253,17 +255,17 @@ static void endScope(void) {
   }
 }
 
-static void expression(void);
+static inline void expression(void);
 static void statement(void);
 static void declaration(void);
-static ParseRule *getRule(TokenType type);
+static inline ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
-static uint8_t identifierConst(Token *name) {
+static inline uint8_t identifierConst(Token *name) {
   return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
 }
 
-static bool identifiersEqual(Token *a, Token *b) {
+static inline bool identifiersEqual(Token *a, Token *b) {
   if (a->length != b->length) {
     return false;
   }
@@ -544,7 +546,7 @@ static void namedVariable(Token name, bool canAssign) {
   }
 }
 
-static void variable(bool canAssign) {
+static inline void variable(bool canAssign) {
   (void)canAssign;
   namedVariable(parser.previous, canAssign);
 }
@@ -674,8 +676,8 @@ static void parsePrecedence(Precedence precedence) {
   }
 }
 
-static ParseRule *getRule(TokenType type) { return &rules[type]; }
-static void expression(void) { parsePrecedence(PREC_ASSIGNMENT); }
+static inline ParseRule *getRule(TokenType type) { return &rules[type]; }
+static inline void expression(void) { parsePrecedence(PREC_ASSIGNMENT); }
 
 static void block(void) {
   while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {

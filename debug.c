@@ -14,25 +14,26 @@ void disassembleChunk(Chunk *chunk, const char *name) {
   }
 }
 
-static int simpleInst(const char *name, int offset) {
+static inline int simpleInst(const char *name, int offset) {
   printf("%s\n", name);
   return offset + 1;
 }
 
-static int byteInst(const char *name, Chunk *chunk, int offset) {
+static inline int byteInst(const char *name, Chunk *chunk, int offset) {
   uint8_t slot = chunk->code[offset + 1];
   printf("%-16s %4d\n", name, slot);
   return offset + 2;
 }
 
-static int jumpInst(const char *name, int sign, Chunk *chunk, int offset) {
+static inline int jumpInst(const char *name, int sign, Chunk *chunk,
+                           int offset) {
   uint16_t jump = (uint16_t)(chunk->code[offset + 1] << 8);
   jump |= chunk->code[offset + 2];
   printf("%-16s %4d -> %d\n", name, offset, offset + 3 + sign * jump);
   return offset + 3;
 }
 
-static int constantInst(const char *name, Chunk *chunk, int offset) {
+static inline int constantInst(const char *name, Chunk *chunk, int offset) {
   uint8_t constIdx = chunk->code[offset + 1];
   printf("%-16s %4d '", name, constIdx);
   printValue(chunk->constants.values[constIdx]);
@@ -40,7 +41,7 @@ static int constantInst(const char *name, Chunk *chunk, int offset) {
   return offset + 2;
 }
 
-static int invokeInst(const char *name, Chunk *chunk, int offset) {
+static inline int invokeInst(const char *name, Chunk *chunk, int offset) {
   uint8_t idx = chunk->code[offset + 1];
   uint8_t argCnt = chunk->code[offset + 2];
   printf("%-16s (%d args) %4d '", name, argCnt, idx);

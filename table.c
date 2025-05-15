@@ -1,9 +1,6 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "memory.h"
-#include "object.h"
 #include "table.h"
 #include "value.h"
 
@@ -21,7 +18,7 @@ void freeTable(Table *table) {
 }
 
 static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
-  uint32_t idx = key->hash % cap;
+  uint32_t idx = key->hash & (cap - 1);
   Entry *tombstone = NULL;
 
   for (;;) {
@@ -41,7 +38,7 @@ static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
       return entry;
     }
 
-    idx = (idx + 1) % cap;
+    idx = (idx + 1) & (cap - 1);
   }
 }
 
@@ -132,7 +129,7 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
     return NULL;
   }
 
-  uint32_t idx = hash % table->cap;
+  uint32_t idx = hash & (table->cap - 1);
   for (;;) {
     Entry *entry = &table->entries[idx];
     if (entry->key == NULL) {
@@ -145,7 +142,7 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
       // we found it
       return entry->key;
     }
-    idx = (idx + 1) % table->cap;
+    idx = (idx + 1) & (table->cap - 1);
   }
 }
 
