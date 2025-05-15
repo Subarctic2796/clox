@@ -41,10 +41,10 @@ static int constantInst(const char *name, Chunk *chunk, int offset) {
 }
 
 static int invokeInst(const char *name, Chunk *chunk, int offset) {
-  uint8_t constIdx = chunk->code[offset + 1];
+  uint8_t idx = chunk->code[offset + 1];
   uint8_t argCnt = chunk->code[offset + 2];
-  printf("%-16s (%d args) %4d '", name, argCnt, constIdx);
-  printValue(chunk->constants.values[constIdx]);
+  printf("%-16s (%d args) %4d '", name, argCnt, idx);
+  printValue(chunk->constants.values[idx]);
   printf("'\n");
   return offset + 3;
 }
