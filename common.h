@@ -9,7 +9,7 @@
 
 #define NAN_BOXING
 
-#define LOX_DEBUG
+// #define LOX_DEBUG
 
 #ifdef LOX_DEBUG // LOX_DEBUG
 #define DEBUG_PRINT_CODE
