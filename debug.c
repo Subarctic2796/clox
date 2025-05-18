@@ -129,7 +129,7 @@ int disassembleInst(Chunk *chunk, int offset) {
     printValue(chunk->constants.values[idx]);
     printf("\n");
 
-    ObjFunction *function = AS_FUNCTION(chunk->constants.values[idx]);
+    ObjFn *function = AS_FUNCTION(chunk->constants.values[idx]);
     for (int j = 0; j < function->upvalueCnt; j++) {
       int isLocal = chunk->code[offset++];
       int index = chunk->code[offset++];

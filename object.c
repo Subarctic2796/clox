@@ -40,21 +40,21 @@ ObjClass *newClass(ObjString *name) {
   return klass;
 }
 
-ObjClosure *newClosure(ObjFunction *function) {
+ObjClosure *newClosure(ObjFn *function) {
   ObjUpvalue **upvalues = ALLOCATE(ObjUpvalue *, function->upvalueCnt);
   for (int i = 0; i < function->upvalueCnt; i++) {
     upvalues[i] = NULL;
   }
 
   ObjClosure *closure = ALLOCATE_OBJ(ObjClosure, OBJ_CLOSURE);
-  closure->function = function;
+  closure->fn = function;
   closure->upvalues = upvalues;
   closure->upvalueCnt = function->upvalueCnt;
   return closure;
 }
 
-ObjFunction *newFunction(void) {
-  ObjFunction *function = ALLOCATE_OBJ(ObjFunction, OBJ_FUNCTION);
+ObjFn *newFunction(void) {
+  ObjFn *function = ALLOCATE_OBJ(ObjFn, OBJ_FUNCTION);
   function->arity = 0;
   function->upvalueCnt = 0;
   function->name = NULL;
@@ -127,7 +127,7 @@ ObjUpvalue *newUpvalue(Value *slot) {
   return upvalue;
 }
 
-static inline void printFunction(ObjFunction *func) {
+static inline void printFunction(ObjFn *func) {
   if (func->name == NULL) {
     printf("<script>");
     return;
@@ -138,13 +138,13 @@ static inline void printFunction(ObjFunction *func) {
 void printObject(Value value) {
   switch (OBJ_TYPE(value)) {
   case OBJ_BOUND_METHOD:
-    printFunction(AS_BOUND_METHOD(value)->method->function);
+    printFunction(AS_BOUND_METHOD(value)->method->fn);
     break;
   case OBJ_CLASS:
     printf("%s", AS_CLASS(value)->name->chars);
     break;
   case OBJ_CLOSURE:
-    printFunction(AS_CLOSURE(value)->function);
+    printFunction(AS_CLOSURE(value)->fn);
     break;
   case OBJ_FUNCTION:
     printFunction(AS_FUNCTION(value));

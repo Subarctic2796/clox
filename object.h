@@ -19,7 +19,7 @@
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod *)AS_OBJ(value))
 #define AS_CLASS(value) ((ObjClass *)AS_OBJ(value))
 #define AS_CLOSURE(value) ((ObjClosure *)AS_OBJ(value))
-#define AS_FUNCTION(value) ((ObjFunction *)AS_OBJ(value))
+#define AS_FUNCTION(value) ((ObjFn *)AS_OBJ(value))
 #define AS_INSTANCE(value) ((ObjInstance *)AS_OBJ(value))
 #define AS_NATIVE(value) (((ObjNative *)AS_OBJ(value))->function)
 #define AS_STRING(value) ((ObjString *)AS_OBJ(value))
@@ -48,7 +48,7 @@ typedef struct {
   int upvalueCnt;
   Chunk chunk;
   ObjString *name;
-} ObjFunction;
+} ObjFn;
 
 typedef Value (*NativeFn)(int argCnt, Value *args);
 
@@ -73,7 +73,7 @@ typedef struct ObjUpvalue {
 
 typedef struct {
   Obj obj;
-  ObjFunction *function;
+  ObjFn *fn;
   ObjUpvalue **upvalues;
   int upvalueCnt;
 } ObjClosure;
@@ -98,8 +98,8 @@ typedef struct {
 
 ObjBoundMethod *newBoundMethod(Value reciever, ObjClosure *method);
 ObjClass *newClass(ObjString *name);
-ObjClosure *newClosure(ObjFunction *function);
-ObjFunction *newFunction(void);
+ObjClosure *newClosure(ObjFn *fn);
+ObjFn *newFunction(void);
 ObjInstance *newInstance(ObjClass *klass);
 ObjNative *newNative(NativeFn function);
 ObjString *takeString(char *chars, int length);

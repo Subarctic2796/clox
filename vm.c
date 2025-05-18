@@ -9,7 +9,11 @@
 #include "chunk.h"
 #include "common.h"
 #include "compiler.h"
+
+#ifdef DEBUG_TRACE_EXECUTION
 #include "debug.h"
+#endif
+
 #include "memory.h"
 #include "object.h"
 #include "table.h"
@@ -39,7 +43,7 @@ static void runtimeError(const char *format, ...) {
 
   for (int i = vm.frameCount - 1; i >= 0; i--) {
     CallFrame *frame = &vm.frames[i];
-    ObjFunction *function = frame->closure->function;
+    ObjFn *function = frame->closure->fn;
     // '-1' because READ_BYTE already advanced the ip
     size_t inst = frame->ip - function->chunk.code - 1;
     fprintf(stderr, "[line %d] in ", function->chunk.lines[inst]);
@@ -89,13 +93,13 @@ void freeVM(void) {
   freeObjects();
 }
 
-inline void push(Value value) { *vm.stackTop++ = value; }
-inline Value pop(void) { return *(--vm.stackTop); }
+void push(Value value) { *vm.stackTop++ = value; }
+Value pop(void) { return *(--vm.stackTop); }
 static inline Value peek(int dist) { return vm.stackTop[-1 - dist]; }
 
 static bool call(ObjClosure *closure, int argCnt) {
-  if (argCnt != closure->function->arity) {
-    runtimeError("Expected %d arguments but got %d", closure->function->arity,
+  if (argCnt != closure->fn->arity) {
+    runtimeError("Expected %d arguments but got %d", closure->fn->arity,
                  argCnt);
     return false;
   }
@@ -108,7 +112,7 @@ static bool call(ObjClosure *closure, int argCnt) {
   // updates the VM's frame ip
   CallFrame *frame = &vm.frames[vm.frameCount++];
   frame->closure = closure;
-  frame->ip = closure->function->chunk.code;
+  frame->ip = closure->fn->chunk.code;
   frame->slots = vm.stackTop - argCnt - 1;
   return true;
 }
@@ -258,8 +262,7 @@ static InterpretResult run(void) {
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT()                                                           \
   (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
-#define READ_CONST()                                                           \
-  (frame->closure->function->chunk.constants.values[READ_BYTE()])
+#define READ_CONST() (frame->closure->fn->chunk.constants.values[READ_BYTE()])
 #define READ_STRING() AS_STRING(READ_CONST())
 #define BINARY_OP(valueType, op)                                               \
   do {                                                                         \
@@ -281,8 +284,8 @@ static InterpretResult run(void) {
       printf(" ]");
     }
     printf("\n");
-    disassembleInst(&frame->closure->function->chunk,
-                    (int)(frame->ip - frame->closure->function->chunk.code));
+    disassembleInst(&frame->closure->fn->chunk,
+                    (int)(frame->ip - frame->closure->fn->chunk.code));
 #endif
     uint8_t inst;
     switch (inst = READ_BYTE()) {
@@ -484,7 +487,7 @@ static InterpretResult run(void) {
       break;
     }
     case OP_CLOSURE: {
-      ObjFunction *function = AS_FUNCTION(READ_CONST());
+      ObjFn *function = AS_FUNCTION(READ_CONST());
       ObjClosure *closure = newClosure(function);
       push(OBJ_VAL(closure));
       for (int i = 0; i < closure->upvalueCnt; i++) {
@@ -546,7 +549,7 @@ static InterpretResult run(void) {
 }
 
 InterpretResult interpret(const char *source) {
-  ObjFunction *function = compile(source);
+  ObjFn *function = compile(source);
   if (function == NULL) {
     return INTERPRET_COMPILE_ERR;
   }

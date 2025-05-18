@@ -102,14 +102,14 @@ static void blackenObject(Obj *object) {
   }
   case OBJ_CLOSURE: {
     ObjClosure *closure = (ObjClosure *)object;
-    markObject((Obj *)closure->function);
+    markObject((Obj *)closure->fn);
     for (int i = 0; i < closure->upvalueCnt; i++) {
       markObject((Obj *)closure->upvalues[i]);
     }
     break;
   }
   case OBJ_FUNCTION: {
-    ObjFunction *function = (ObjFunction *)object;
+    ObjFn *function = (ObjFn *)object;
     markObject((Obj *)function->name);
     markArray(&function->chunk.constants);
     break;
@@ -152,9 +152,9 @@ static void freeObject(Obj *object) {
     break;
   }
   case OBJ_FUNCTION: {
-    ObjFunction *function = (ObjFunction *)object;
+    ObjFn *function = (ObjFn *)object;
     freeChunk(&function->chunk);
-    FREE(ObjFunction, object);
+    FREE(ObjFn, object);
     break;
   }
   case OBJ_INSTANCE: {
