@@ -1,8 +1,5 @@
-#include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 
-#include "chunk.h"
 #include "debug.h"
 #include "object.h"
 #include "value.h"
@@ -43,8 +40,8 @@ static inline int constantInst(const char *name, Chunk *chunk, int offset) {
 
 static inline int invokeInst(const char *name, Chunk *chunk, int offset) {
   uint8_t idx = chunk->code[offset + 1];
-  uint8_t argCnt = chunk->code[offset + 2];
-  printf("%-16s (%d args) %4d '", name, argCnt, idx);
+  uint8_t argc = chunk->code[offset + 2];
+  printf("%-16s (%d args) %4d '", name, argc, idx);
   printValue(chunk->constants.values[idx]);
   printf("'\n");
   return offset + 3;

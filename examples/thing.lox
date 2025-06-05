@@ -1,1 +1,11 @@
-23 + 4 / (23.5 - 4) * -1 -2 * (3.4 * 2.3) / 9.8
+fun outer() {
+  var a = 1;
+  var b = 2;
+  fun middle() {
+    var c = 3;
+    var d = 4;
+    fun inner() {
+      print a + c + b + d;
+    }
+  }
+}

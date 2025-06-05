@@ -50,7 +50,7 @@ typedef struct {
   ObjString *name;
 } ObjFn;
 
-typedef Value (*NativeFn)(int argCnt, Value *args);
+typedef Value (*NativeFn)(int argc, Value *args);
 
 typedef struct {
   Obj obj;

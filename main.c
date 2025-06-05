@@ -1,17 +1,9 @@
-#include <assert.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
-#include "chunk.h"
-#include "debug.h"
 #include "vm.h"
 
 static void repl(void) {
-  char line[1024];
+  char line[1024] = {0};
   for (;;) {
     printf("> ");
     if (!fgets(line, sizeof(line), stdin)) {

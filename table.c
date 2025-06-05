@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 
 #include "memory.h"
@@ -43,6 +44,7 @@ static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
 }
 
 bool tableGet(Table *table, ObjString *key, Value *value) {
+  printf("getting '%s'\n", key->chars);
   if (table->cnt == 0) {
     return false;
   }
@@ -53,6 +55,9 @@ bool tableGet(Table *table, ObjString *key, Value *value) {
   }
 
   *value = entry->value;
+  printf("got '");
+  printValue(*value);
+  printf("'\n");
   return true;
 }
 

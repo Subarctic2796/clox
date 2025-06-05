@@ -1,8 +1,6 @@
 #ifndef INCLUDE_CLOX_MEMORY_H_
 #define INCLUDE_CLOX_MEMORY_H_
 
-#include <stddef.h>
-
 #include "common.h"
 #include "object.h"
 
@@ -23,5 +21,18 @@ void markObject(Obj *object);
 void markValue(Value value);
 void collectGarbage(void);
 void freeObjects(void);
+
+#ifdef DEBUG_LOG_GC
+static const char *ObjToStrings[] = {
+    [OBJ_BOUND_METHOD] = "OBJ_BOUND_METHOD",
+    [OBJ_CLASS] = "OBJ_CLASS",
+    [OBJ_CLOSURE] = "OBJ_CLOSURE",
+    [OBJ_FUNCTION] = "OBJ_FUNCTION",
+    [OBJ_INSTANCE] = "OBJ_INSTANCE",
+    [OBJ_NATIVE] = "OBJ_NATIVE",
+    [OBJ_STRING] = "OBJ_STRING",
+    [OBJ_UPVALUE] = "OBJ_UPVALUE",
+};
+#endif
 
 #endif // INCLUDE_CLOX_MEMORY_H_

@@ -21,7 +21,7 @@ typedef struct {
   int frameCount;
 
   Value stack[STACK_MAX];
-  Value *stackTop;
+  Value *sp;
   Table globals;
   Table strings;
   ObjString *initString;

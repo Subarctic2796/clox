@@ -1,20 +1,20 @@
+#include <stdlib.h>
+
 #include "chunk.h"
 #include "memory.h"
-#include "value.h"
 #include "vm.h"
-#include <stdint.h>
-#include <stdlib.h>
 
 void initChunk(Chunk *chunk) {
   chunk->cap = 0;
   chunk->cnt = 0;
   chunk->code = NULL;
+  chunk->lines = NULL;
   initValueArray(&chunk->constants);
 }
 
 void writeChunk(Chunk *chunk, uint8_t byte, int line) {
   if (chunk->cap < chunk->cnt + 1) {
-    size_t oldCap = chunk->cap;
+    int oldCap = chunk->cap;
     chunk->cap = GROW_CAP(oldCap);
     chunk->code = GROW_ARRAY(uint8_t, chunk->code, oldCap, chunk->cap);
     chunk->lines = GROW_ARRAY(int, chunk->lines, oldCap, chunk->cap);

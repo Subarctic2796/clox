@@ -1,12 +1,7 @@
-#include <stddef.h>
 #include <stdlib.h>
 
-#include "chunk.h"
 #include "compiler.h"
 #include "memory.h"
-#include "object.h"
-#include "table.h"
-#include "value.h"
 #include "vm.h"
 
 #ifdef DEBUG_LOG_GC
@@ -132,7 +127,9 @@ static void blackenObject(Obj *object) {
 
 static void freeObject(Obj *object) {
 #ifdef DEBUG_LOG_GC
-  printf("%p free type %d\n", (void *)object, object->type);
+#define NEED_TO_STRING
+  printf("%p free type %s\n", (void *)object, ObjToStrings[object->type]);
+#undef NEED_TO_STRING
 #endif // ifdef DEBUG_LOG_GC
 
   switch (object->type) {
@@ -179,22 +176,49 @@ static void freeObject(Obj *object) {
 }
 
 static void markRoots(void) {
-  for (Value *slot = vm.stack; slot < vm.stackTop; slot++) {
+#ifdef DEBUG_LOG_GC
+  printf("-- begin mark roots\nmarking stack\n");
+#endif // ifdef DEBUG_LOG_GC
+
+  for (Value *slot = vm.stack; slot < vm.sp; slot++) {
     markValue(*slot);
   }
+
+#ifdef DEBUG_LOG_GC
+  printf("marking callframes\n");
+#endif // ifdef DEBUG_LOG_GC
 
   for (int i = 0; i < vm.frameCount; i++) {
     markObject((Obj *)vm.frames[i].closure);
   }
+
+#ifdef DEBUG_LOG_GC
+  printf("marking upvalues\n");
+#endif // ifdef DEBUG_LOG_GC
 
   for (ObjUpvalue *upvalue = vm.openUpvalues; upvalue != NULL;
        upvalue = upvalue->next) {
     markObject((Obj *)upvalue);
   }
 
+#ifdef DEBUG_LOG_GC
+  printf("marking globals\n");
+#endif // ifdef DEBUG_LOG_GC
   markTable(&vm.globals);
+
+#ifdef DEBUG_LOG_GC
+  printf("marking compiler roots\n");
+#endif // ifdef DEBUG_LOG_GC
   markCompilerRoots();
+
+#ifdef DEBUG_LOG_GC
+  printf("marking init string\n");
+#endif // ifdef DEBUG_LOG_GC
   markObject((Obj *)vm.initString);
+
+#ifdef DEBUG_LOG_GC
+  printf("-- end mark roots\n");
+#endif // ifdef DEBUG_LOG_GC
 }
 
 static inline void traceReferences(void) {
@@ -220,7 +244,6 @@ static void sweep(void) {
       } else {
         vm.objects = object;
       }
-
       freeObject(unreached);
     }
   }
@@ -233,8 +256,8 @@ void collectGarbage(void) {
 #endif // ifdef DEBUG_LOG_GC
 
   markRoots();
-  tableRemoveWhite(&vm.strings);
   traceReferences();
+  tableRemoveWhite(&vm.strings);
   sweep();
 
   vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;

@@ -1,16 +1,11 @@
-#include "compiler.h"
-#include <stdbool.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "chunk.h"
 #include "common.h"
+#include "compiler.h"
 #include "memory.h"
-#include "object.h"
 #include "scanner.h"
-#include "value.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -107,7 +102,7 @@ static inline void errorAtCurrent(const char *msg) {
   errorAt(&parser.cur, msg);
 }
 
-static inline void advance(void) {
+static void advance(void) {
   parser.prv = parser.cur;
 
   for (;;) {
@@ -231,7 +226,7 @@ static ObjFn *endCompiler(void) {
 
 #ifdef DEBUG_PRINT_CODE
   if (!parser.hadError) {
-    disassembleChunk(currentChunk(),
+    disassembleChunk(curChunk(),
                      fn->name != NULL ? fn->name->chars : "<script>");
   }
 #endif

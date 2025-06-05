@@ -45,7 +45,8 @@ typedef enum {
 } OpCode;
 
 typedef struct {
-  int cnt, cap;
+  int cnt;
+  int cap;
   uint8_t *code;
   int *lines; // code and lines must be the same size
   ValueArray constants;

@@ -52,8 +52,6 @@ static inline Value numToValue(double num) {
 
 #else
 
-typedef uint64_t Value;
-
 typedef enum {
   VAL_BOOL,
   VAL_NIL,
