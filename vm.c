@@ -40,7 +40,7 @@ static void runtimeError(const char *format, ...) {
     ObjFn *fn = frame->closure->fn;
     // '-1' because READ_BYTE already advanced the ip
     size_t inst = frame->ip - fn->chunk.code - 1;
-    fprintf(stderr, "[line %d] in ", fn->chunk.lines[inst]);
+    fprintf(stderr, "[line %d] in ", getLine(&fn->chunk, inst));
     if (fn->name == NULL) {
       fprintf(stderr, "script\n");
     } else {

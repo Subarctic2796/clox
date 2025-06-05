@@ -45,10 +45,16 @@ typedef enum {
 } OpCode;
 
 typedef struct {
+  int offset, line;
+} LineInfo;
+
+typedef struct {
   int cnt;
   int cap;
   uint8_t *code;
-  int *lines; // code and lines must be the same size
+  LineInfo *lines;
+  int lineCnt;
+  int lineCap;
   ValueArray constants;
 } Chunk;
 
@@ -56,5 +62,6 @@ void initChunk(Chunk *chunk);
 void freeChunk(Chunk *chunk);
 void writeChunk(Chunk *chunk, uint8_t byte, int line);
 int addConst(Chunk *chunk, Value value);
+int getLine(Chunk *chunk, int instruction);
 
 #endif // INCLUDE_CLOX_CHUNK_H_

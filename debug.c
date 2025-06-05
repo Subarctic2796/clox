@@ -1,5 +1,6 @@
 #include <stdio.h>
 
+#include "chunk.h"
 #include "debug.h"
 #include "object.h"
 #include "value.h"
@@ -49,10 +50,11 @@ static inline int invokeInst(const char *name, Chunk *chunk, int offset) {
 
 int disassembleInst(Chunk *chunk, int offset) {
   printf("%04d ", offset);
-  if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
+  int line = getLine(chunk, offset);
+  if (offset > 0 && line == getLine(chunk, offset - 1)) {
     printf("   | ");
   } else {
-    printf("%4d ", chunk->lines[offset]);
+    printf("%4d ", line);
   }
 
   OpCode inst = (OpCode)chunk->code[offset];
