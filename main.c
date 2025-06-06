@@ -1,9 +1,13 @@
+#include <stdio.h>
 #include <stdlib.h>
 
 #include "vm.h"
 
 static void repl(void) {
   char line[1024] = {0};
+#ifdef NAN_BOXING
+  printf("NAN tagging is enabled\n");
+#endif
   for (;;) {
     printf("> ");
     if (!fgets(line, sizeof(line), stdin)) {

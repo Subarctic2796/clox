@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,6 +7,7 @@
 #include "compiler.h"
 #include "memory.h"
 #include "scanner.h"
+#include "value.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -56,6 +58,11 @@ typedef enum {
   TYPE_SCRIPT,
 } FunctionType;
 
+typedef struct {
+  Value value;
+  int index;
+} Symbol;
+
 typedef struct Compiler {
   struct Compiler *enclosing;
   ObjFn *fn;
@@ -65,6 +72,9 @@ typedef struct Compiler {
   int localCount;
   Upvalue upvalues[UINT8_COUNT];
   int scopeDepth;
+
+  Symbol symbolTable[UINT8_COUNT];
+  int symbolCnt;
 } Compiler;
 
 typedef struct ClassCompiler {
@@ -169,13 +179,29 @@ static void emitReturn(void) {
   emitByte(OP_RETURN);
 }
 
+static int findSymbol(Value value) {
+  for (int i = 0; i < current->symbolCnt; i++) {
+    Symbol symbol = current->symbolTable[i];
+    if (valuesEqual(value, current->symbolTable[i].value)) {
+      return symbol.index;
+    }
+  }
+  return -1;
+}
+
 static uint8_t makeConstant(Value value) {
+  int existing = findSymbol(value);
+  if (existing != -1) {
+    return (uint8_t)existing; // reuse existing constant
+  }
+
   int constIdx = addConst(curChunk(), value);
   if (constIdx > UINT8_MAX) {
     error("Too many constants in on chunk");
     return 0;
   }
 
+  current->symbolTable[current->symbolCnt++] = ((Symbol){value, constIdx});
   return (uint8_t)constIdx;
 }
 
@@ -201,6 +227,7 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   compiler->type = type;
   compiler->localCount = 0;
   compiler->scopeDepth = 0;
+  compiler->symbolCnt = 0;
   compiler->fn = newFunction();
   current = compiler;
 
