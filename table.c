@@ -123,7 +123,7 @@ void tableAddAll(Table *from, Table *to) {
   }
 }
 
-ObjString *tableFindString(Table *table, const char *chars, int length,
+ObjString *tableFindString(Table *table, const char *chars, int len,
                            uint32_t hash) {
   if (table->cnt == 0) {
     return NULL;
@@ -133,12 +133,12 @@ ObjString *tableFindString(Table *table, const char *chars, int length,
   for (;;) {
     Entry *entry = &table->entries[idx];
     if (entry->key == NULL) {
-      // stop i fwe find an empty non-tombstone entry
+      // stop if we find an empty non-tombstone entry
       if (IS_NIL(entry->value)) {
         return NULL;
       }
-    } else if (entry->key->length == length && entry->key->hash == hash &&
-               memcmp(entry->key->chars, chars, length) == 0) {
+    } else if (entry->key->length == len && entry->key->hash == hash &&
+               memcmp(entry->key->chars, chars, len) == 0) {
       // we found it
       return entry->key;
     }

@@ -26,6 +26,7 @@
 #define AS_CSTRING(value) (((ObjString *)AS_OBJ(value))->chars)
 
 typedef enum {
+  OBJ_ARRAY,
   OBJ_BOUND_METHOD,
   OBJ_CLASS,
   OBJ_CLOSURE,
@@ -60,8 +61,8 @@ typedef struct {
 struct ObjString {
   Obj obj;
   int length;
-  char *chars;
   uint32_t hash;
+  char *chars;
 };
 
 typedef struct ObjUpvalue {

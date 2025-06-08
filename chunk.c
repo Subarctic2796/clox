@@ -1,5 +1,6 @@
 #include "chunk.h"
 #include "memory.h"
+#include "value.h"
 #include "vm.h"
 
 void initChunk(Chunk *chunk) {
@@ -19,8 +20,7 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line) {
     chunk->cap = GROW_CAP(oldCap);
     chunk->code = GROW_ARRAY(uint8_t, chunk->code, oldCap, chunk->cap);
   }
-  chunk->code[chunk->cnt] = byte;
-  chunk->cnt++;
+  chunk->code[chunk->cnt++] = byte;
 
   // see if still on same line
   if (chunk->lineCnt > 0 && chunk->lines[chunk->lineCnt - 1].line == line) {
@@ -33,15 +33,13 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line) {
     chunk->lineCap = GROW_CAP(oldCap);
     chunk->lines = GROW_ARRAY(LineInfo, chunk->lines, oldCap, chunk->lineCap);
   }
-  LineInfo *ln = &chunk->lines[chunk->lineCnt++];
-  ln->offset = chunk->cnt - 1;
-  ln->line = line;
+  chunk->lines[chunk->lineCnt++] = ((LineInfo){chunk->lineCnt - 1, line});
 }
 
 int addConst(Chunk *chunk, Value value) {
-  push(value);
+  pushRoot(value);
   writeValueArray(&chunk->constants, value);
-  pop();
+  popRoot();
   return chunk->constants.cnt - 1;
 }
 

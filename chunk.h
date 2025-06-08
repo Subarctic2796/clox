@@ -52,10 +52,11 @@ typedef struct {
   int cnt;
   int cap;
   uint8_t *code;
+  ValueArray constants;
+
   LineInfo *lines;
   int lineCnt;
   int lineCap;
-  ValueArray constants;
 } Chunk;
 
 void initChunk(Chunk *chunk);

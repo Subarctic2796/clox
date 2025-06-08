@@ -5,6 +5,7 @@
 
 #include "common.h"
 #include "compiler.h"
+#include "value.h"
 
 #ifdef DEBUG_TRACE_EXECUTION
 #include "debug.h"
@@ -26,6 +27,7 @@ static void resetStack(void) {
   vm.sp = vm.stack;
   vm.frameCount = 0;
   vm.openUpvalues = NULL;
+  vm.tempCnt = 0;
 }
 
 static void runtimeError(const char *format, ...) {
@@ -53,11 +55,13 @@ static void runtimeError(const char *format, ...) {
 
 static void defineNative(const char *name, NativeFn function) {
   int len = (int)strlen(name);
-  push(OBJ_VAL(copyString(name, len)));
-  push(OBJ_VAL(newNative(function)));
-  tableSet(&vm.globals, AS_STRING(vm.stack[0]), vm.stack[1]);
-  pop(); // pop native name, on stack bc of GC
-  pop(); // pop native ptr, on stack bc of GC
+  ObjString *nativeName = copyString(name, len);
+  pushRoot(OBJ_VAL(nativeName));
+  ObjNative *fn = newNative(function);
+  pushRoot(OBJ_VAL(fn));
+  tableSet(&vm.globals, nativeName, OBJ_VAL(fn));
+  popRoot(); // pop native name
+  popRoot(); // pop native ptr
 }
 
 void initVM(void) {
@@ -69,6 +73,8 @@ void initVM(void) {
   vm.grayCnt = 0;
   vm.grayCap = 0;
   vm.grayStack = NULL;
+
+  vm.tempCnt = 0;
 
   initTable(&vm.globals);
 
@@ -90,6 +96,9 @@ void freeVM(void) {
 void push(Value value) { *vm.sp++ = value; }
 Value pop(void) { return *(--vm.sp); }
 static inline Value peek(int dist) { return vm.sp[-1 - dist]; }
+
+void pushRoot(Value value) { vm.tempRoots[vm.tempCnt++] = value; }
+void popRoot() { vm.tempCnt--; }
 
 static bool call(ObjClosure *closure, int argc) {
   if (argc != closure->fn->arity) {
@@ -183,7 +192,7 @@ static bool bindMethod(ObjClass *klass, ObjString *name) {
   }
 
   ObjBoundMethod *bound = newBoundMethod(peek(0), AS_CLOSURE(method));
-  pop();
+  pop(); // pop 'this'
   push(OBJ_VAL(bound));
   return true;
 }
@@ -587,9 +596,9 @@ InterpretResult interpret(const char *source) {
     return INTERPRET_COMPILE_ERR;
   }
 
-  push(OBJ_VAL(function));
+  pushRoot(OBJ_VAL(function));
   ObjClosure *closure = newClosure(function);
-  pop();
+  popRoot();
   push(OBJ_VAL(closure));
   call(closure, 0);
 

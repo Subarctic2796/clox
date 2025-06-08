@@ -64,15 +64,20 @@ typedef struct {
 } Symbol;
 
 typedef struct Compiler {
+  // current compiler info
   struct Compiler *enclosing;
   ObjFn *fn;
   FunctionType type;
 
+  // locals info
   Local locals[UINT8_COUNT];
   int localCount;
+
+  // upvalue info
   Upvalue upvalues[UINT8_COUNT];
   int scopeDepth;
 
+  // constants info
   Symbol symbolTable[UINT8_COUNT];
   int symbolCnt;
 } Compiler;

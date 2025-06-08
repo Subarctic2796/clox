@@ -9,6 +9,7 @@
 
 #define FRAMES_MAX 64
 #define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+#define TEMP_ROOTS_MAX 8
 
 typedef struct {
   ObjClosure *closure;
@@ -30,9 +31,13 @@ typedef struct {
   size_t bytesAllocated;
   size_t nextGC;
   Obj *objects;
+
   int grayCnt;
   int grayCap;
   Obj **grayStack;
+
+  Value tempRoots[TEMP_ROOTS_MAX];
+  int tempCnt;
 } VM;
 
 typedef enum {
@@ -46,7 +51,7 @@ extern VM vm;
 void initVM(void);
 void freeVM(void);
 InterpretResult interpret(const char *source);
-void push(Value value);
-Value pop(void);
+void pushRoot(Value val);
+void popRoot();
 
 #endif // INCLUDE_CLOX_VM_H_
