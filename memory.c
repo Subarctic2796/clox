@@ -177,18 +177,18 @@ static void freeObject(Obj *object) {
 
 static void markRoots(void) {
 #ifdef DEBUG_LOG_GC
-  printf("marking temp roots\n");
-#endif // ifdef DEBUG_LOG_GC
-  for (int i = 0; i < vm.tempCnt; i++) {
-    markValue(vm.tempRoots[i]);
-  }
-
-#ifdef DEBUG_LOG_GC
   printf("-- begin mark roots\nmarking stack\n");
 #endif // ifdef DEBUG_LOG_GC
 
   for (Value *slot = vm.stack; slot < vm.sp; slot++) {
     markValue(*slot);
+  }
+
+#ifdef DEBUG_LOG_GC
+  printf("marking temp roots\n");
+#endif // ifdef DEBUG_LOG_GC
+  for (int i = 0; i < vm.tempCnt; i++) {
+    markValue(vm.tempRoots[i]);
   }
 
 #ifdef DEBUG_LOG_GC

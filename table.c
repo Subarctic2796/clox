@@ -1,6 +1,7 @@
 #include <string.h>
 
 #include "memory.h"
+#include "object.h"
 #include "table.h"
 #include "value.h"
 
@@ -17,13 +18,13 @@ void freeTable(Table *table) {
   initTable(table);
 }
 
-static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
-  uint32_t idx = key->hash & (cap - 1);
+static Entry *findEntry(Entry *entries, int cap, Value key) {
+  uint32_t idx = hashValue(key) & (cap - 1);
   Entry *tombstone = NULL;
 
   for (;;) {
     Entry *entry = &entries[idx];
-    if (entry->key == NULL) {
+    if (IS_EMPTY(entry->key)) {
       if (IS_NIL(entry->value)) {
         // Empty entry.
         return tombstone != NULL ? tombstone : entry;
@@ -33,7 +34,7 @@ static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
           tombstone = entry;
         }
       }
-    } else if (entry->key == key) {
+    } else if (valuesEqual(key, entry->key)) {
       // We found the key.
       return entry;
     }
@@ -42,13 +43,13 @@ static Entry *findEntry(Entry *entries, int cap, ObjString *key) {
   }
 }
 
-bool tableGet(Table *table, ObjString *key, Value *value) {
+bool tableGet(Table *table, Value key, Value *value) {
   if (table->cnt == 0) {
     return false;
   }
 
   Entry *entry = findEntry(table->entries, table->cap, key);
-  if (entry->key == NULL) {
+  if (IS_NIL(entry->key)) {
     return false;
   }
 
@@ -59,14 +60,14 @@ bool tableGet(Table *table, ObjString *key, Value *value) {
 static void adjustCap(Table *table, int cap) {
   Entry *entries = ALLOCATE(Entry, cap);
   for (int i = 0; i < cap; i++) {
-    entries[i].key = NULL;
+    entries[i].key = EMPTY_VAL;
     entries[i].value = NIL_VAL;
   }
 
   table->cnt = 0;
   for (int i = 0; i < table->cap; i++) {
     Entry *entry = &table->entries[i];
-    if (entry->key == NULL) {
+    if (IS_EMPTY(entry->key)) {
       continue;
     }
 
@@ -81,14 +82,14 @@ static void adjustCap(Table *table, int cap) {
   table->cap = cap;
 }
 
-bool tableSet(Table *table, ObjString *key, Value value) {
+bool tableSet(Table *table, Value key, Value value) {
   if (table->cnt + 1 > table->cap * TABLE_MAX_LOAD) {
     int cap = GROW_CAP(table->cap);
     adjustCap(table, cap);
   }
 
   Entry *entry = findEntry(table->entries, table->cap, key);
-  bool isNewKey = entry->key == NULL;
+  bool isNewKey = IS_EMPTY(entry->key);
   if (isNewKey && IS_NIL(entry->value)) {
     table->cnt++;
   }
@@ -97,19 +98,19 @@ bool tableSet(Table *table, ObjString *key, Value value) {
   return isNewKey;
 }
 
-bool tableDelete(Table *table, ObjString *key) {
+bool tableDelete(Table *table, Value key) {
   if (table->cnt == 0) {
     return false;
   }
 
   // find entry
   Entry *entry = findEntry(table->entries, table->cap, key);
-  if (entry->key == NULL) {
+  if (IS_EMPTY(entry->key)) {
     return false;
   }
 
   // place tombstone in the entry
-  entry->key = NULL;
+  entry->key = EMPTY_VAL;
   entry->value = BOOL_VAL(true);
   return true;
 }
@@ -117,7 +118,7 @@ bool tableDelete(Table *table, ObjString *key) {
 void tableAddAll(Table *from, Table *to) {
   for (int i = 0; i < from->cap; i++) {
     Entry *entry = &from->entries[i];
-    if (entry->key != NULL) {
+    if (!IS_EMPTY(entry->key)) {
       tableSet(to, entry->key, entry->value);
     }
   }
@@ -132,15 +133,18 @@ ObjString *tableFindString(Table *table, const char *chars, int len,
   uint32_t idx = hash & (table->cap - 1);
   for (;;) {
     Entry *entry = &table->entries[idx];
-    if (entry->key == NULL) {
+    if (IS_EMPTY(entry->key)) {
       // stop if we find an empty non-tombstone entry
       if (IS_NIL(entry->value)) {
         return NULL;
       }
-    } else if (entry->key->length == len && entry->key->hash == hash &&
-               memcmp(entry->key->chars, chars, len) == 0) {
-      // we found it
-      return entry->key;
+    } else if (IS_STRING(entry->key)) {
+      ObjString *string = AS_STRING(entry->key);
+      if (string->length == len && string->hash == hash &&
+          memcmp(string->chars, chars, len) == 0) {
+        // we found it
+        return string;
+      }
     }
     idx = (idx + 1) & (table->cap - 1);
   }
@@ -149,8 +153,11 @@ ObjString *tableFindString(Table *table, const char *chars, int len,
 void tableRemoveWhite(Table *table) {
   for (int i = 0; i < table->cap; i++) {
     Entry *entry = &table->entries[i];
-    if (entry->key != NULL && !entry->key->obj.isMarked) {
-      tableDelete(table, entry->key);
+    if (IS_STRING(entry->key)) {
+      ObjString *string = AS_STRING(entry->key);
+      if (!string->obj.isMarked) {
+        tableDelete(table, entry->key);
+      }
     }
   }
 }
@@ -158,7 +165,7 @@ void tableRemoveWhite(Table *table) {
 void markTable(Table *table) {
   for (int i = 0; i < table->cap; i++) {
     Entry *entry = &table->entries[i];
-    markObject((Obj *)entry->key);
+    markValue(entry->key);
     markValue(entry->value);
   }
 }

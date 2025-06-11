@@ -54,12 +54,11 @@ static void runtimeError(const char *format, ...) {
 }
 
 static void defineNative(const char *name, NativeFn function) {
-  int len = (int)strlen(name);
-  ObjString *nativeName = copyString(name, len);
+  ObjString *nativeName = copyString(name, (int)strlen(name));
   pushRoot(OBJ_VAL(nativeName));
   ObjNative *fn = newNative(function);
   pushRoot(OBJ_VAL(fn));
-  tableSet(&vm.globals, nativeName, OBJ_VAL(fn));
+  tableSet(&vm.globals, OBJ_VAL(nativeName), OBJ_VAL(fn));
   popRoot(); // pop native name
   popRoot(); // pop native ptr
 }
@@ -93,8 +92,8 @@ void freeVM(void) {
   freeObjects();
 }
 
-void push(Value value) { *vm.sp++ = value; }
-Value pop(void) { return *(--vm.sp); }
+static inline void push(Value value) { *vm.sp++ = value; }
+static inline Value pop(void) { return *(--vm.sp); }
 static inline Value peek(int dist) { return vm.sp[-1 - dist]; }
 
 void pushRoot(Value value) { vm.tempRoots[vm.tempCnt++] = value; }
@@ -131,7 +130,7 @@ static bool callValue(Value callee, int argCnt) {
       ObjClass *klass = AS_CLASS(callee);
       vm.sp[-argCnt - 1] = OBJ_VAL(newInstance(klass));
       Value init;
-      if (tableGet(&klass->methods, vm.initString, &init)) {
+      if (tableGet(&klass->methods, OBJ_VAL(vm.initString), &init)) {
         return call(AS_CLOSURE(init), argCnt);
       } else if (argCnt != 0) {
         runtimeError("Expected 0 arguments but got %d", argCnt);
@@ -158,7 +157,7 @@ static bool callValue(Value callee, int argCnt) {
 
 static inline bool invokeFromClass(ObjClass *klass, ObjString *name, int argc) {
   Value method;
-  if (!tableGet(&klass->methods, name, &method)) {
+  if (!tableGet(&klass->methods, OBJ_VAL(name), &method)) {
     runtimeError("Undefined property '%s'", name->chars);
     return false;
   }
@@ -176,7 +175,7 @@ static bool invoke(ObjString *name, int argCnt) {
   ObjInstance *instance = AS_INSTANCE(receiver);
 
   Value value;
-  if (tableGet(&instance->fields, name, &value)) {
+  if (tableGet(&instance->fields, OBJ_VAL(name), &value)) {
     vm.sp[-argCnt - 1] = value;
     return callValue(value, argCnt);
   }
@@ -186,7 +185,7 @@ static bool invoke(ObjString *name, int argCnt) {
 
 static bool bindMethod(ObjClass *klass, ObjString *name) {
   Value method;
-  if (!tableGet(&klass->methods, name, &method)) {
+  if (!tableGet(&klass->methods, OBJ_VAL(name), &method)) {
     runtimeError("Undefined property '%s'", name->chars);
     return false;
   }
@@ -233,7 +232,7 @@ static void closeUpvalues(Value *last) {
 static void defineMethod(ObjString *name) {
   Value method = peek(0);
   ObjClass *klass = AS_CLASS(peek(1));
-  tableSet(&klass->methods, name, method);
+  tableSet(&klass->methods, OBJ_VAL(name), method);
   pop();
 }
 
@@ -328,7 +327,7 @@ static InterpretResult run(void) {
     case OP_GET_GLOBAL: {
       ObjString *name = READ_STRING();
       Value value;
-      if (!tableGet(&vm.globals, name, &value)) {
+      if (!tableGet(&vm.globals, OBJ_VAL(name), &value)) {
         runtimeError("Undefined variable '%s'", name->chars);
         return INTERPRET_RUNTIME_ERR;
       }
@@ -338,15 +337,15 @@ static InterpretResult run(void) {
     }
     case OP_DEFINE_GLOBAL: {
       ObjString *name = READ_STRING();
-      tableSet(&vm.globals, name, peek(0));
+      tableSet(&vm.globals, OBJ_VAL(name), peek(0));
       pop();
       break;
       // goto loop;
     }
     case OP_SET_GLOBAL: {
       ObjString *name = READ_STRING();
-      if (tableSet(&vm.globals, name, peek(0))) {
-        tableDelete(&vm.globals, name);
+      if (tableSet(&vm.globals, OBJ_VAL(name), peek(0))) {
+        tableDelete(&vm.globals, OBJ_VAL(name));
         runtimeError("Undefined variable '%s'", name->chars);
         return INTERPRET_RUNTIME_ERR;
       }
@@ -374,7 +373,7 @@ static InterpretResult run(void) {
       ObjInstance *instance = AS_INSTANCE(peek(0));
       ObjString *name = READ_STRING();
       Value value;
-      if (tableGet(&instance->fields, name, &value)) {
+      if (tableGet(&instance->fields, OBJ_VAL(name), &value)) {
         pop(); // instance
         push(value);
         break;
@@ -393,7 +392,7 @@ static InterpretResult run(void) {
         return INTERPRET_RUNTIME_ERR;
       }
       ObjInstance *instance = AS_INSTANCE(peek(1));
-      tableSet(&instance->fields, READ_STRING(), peek(0));
+      tableSet(&instance->fields, OBJ_VAL(READ_STRING()), peek(0));
       Value value = pop();
       pop();
       push(value);

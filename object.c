@@ -82,7 +82,7 @@ static ObjString *allocateString(char *chars, int length, uint32_t hash) {
   string->hash = hash;
 
   pushRoot(OBJ_VAL(string)); // make sure not collect by mistake
-  tableSet(&vm.strings, string, NIL_VAL);
+  tableSet(&vm.strings, OBJ_VAL(string), NIL_VAL);
   popRoot();
 
   return string;

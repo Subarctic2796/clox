@@ -14,7 +14,7 @@
 #endif
 
 typedef struct {
-  Token cur, prv;
+  Token prv, cur;
   bool hadError, panicMode;
 } Parser;
 
@@ -78,8 +78,8 @@ typedef struct Compiler {
   int scopeDepth;
 
   // constants info
-  Symbol symbolTable[UINT8_COUNT];
-  int symbolCnt;
+  Symbol constantsTable[UINT8_COUNT];
+  int constantsCnt;
 } Compiler;
 
 typedef struct ClassCompiler {
@@ -91,7 +91,9 @@ Parser parser;
 Compiler *current = NULL;
 ClassCompiler *currentClass = NULL;
 
-static inline Chunk *curChunk(void) { return &current->fn->chunk; }
+static inline Chunk *curChunk(Compiler *compiler) {
+  return &compiler->fn->chunk;
+}
 
 static void errorAt(Token *token, const char *message) {
   if (parser.panicMode) {
@@ -105,7 +107,7 @@ static void errorAt(Token *token, const char *message) {
   } else if (token->type == TOKEN_ERROR) {
     // nothing
   } else {
-    fprintf(stderr, " at '%.*s'", token->length, token->start);
+    fprintf(stderr, " at '%.*s'", token->len, token->start);
   }
 
   fprintf(stderr, ": %s\n", message);
@@ -148,7 +150,7 @@ static inline bool match(TokenType type) {
 }
 
 static inline void emitByte(uint8_t byte) {
-  writeChunk(curChunk(), byte, parser.prv.line);
+  writeChunk(curChunk(current), byte, parser.prv.line);
 }
 
 static inline void emitBytes(uint8_t byte1, uint8_t byte2) {
@@ -159,7 +161,7 @@ static inline void emitBytes(uint8_t byte1, uint8_t byte2) {
 static void emitLoop(int loopStart) {
   emitByte(OP_LOOP);
 
-  int offset = curChunk()->cnt - loopStart + 2;
+  int offset = curChunk(current)->cnt - loopStart + 2;
   if (offset > UINT16_MAX) {
     error("Loop body too large");
   }
@@ -172,7 +174,7 @@ static inline int emitJump(uint8_t inst) {
   emitByte(inst);
   emitByte(0xff);
   emitByte(0xff);
-  return curChunk()->cnt - 2;
+  return curChunk(current)->cnt - 2;
 }
 
 static void emitReturn(void) {
@@ -185,9 +187,9 @@ static void emitReturn(void) {
 }
 
 static int findSymbol(Value value) {
-  for (int i = 0; i < current->symbolCnt; i++) {
-    Symbol symbol = current->symbolTable[i];
-    if (valuesEqual(value, current->symbolTable[i].value)) {
+  for (int i = 0; i < current->constantsCnt; i++) {
+    Symbol symbol = current->constantsTable[i];
+    if (valuesEqual(value, current->constantsTable[i].value)) {
       return symbol.index;
     }
   }
@@ -200,13 +202,14 @@ static uint8_t makeConstant(Value value) {
     return (uint8_t)existing; // reuse existing constant
   }
 
-  int constIdx = addConst(curChunk(), value);
+  int constIdx = addConst(curChunk(current), value);
   if (constIdx > UINT8_MAX) {
     error("Too many constants in on chunk");
     return 0;
   }
 
-  current->symbolTable[current->symbolCnt++] = ((Symbol){value, constIdx});
+  current->constantsTable[current->constantsCnt++] =
+      ((Symbol){value, constIdx});
   return (uint8_t)constIdx;
 }
 
@@ -216,14 +219,14 @@ static inline void emitConstant(Value value) {
 
 static void patchJump(int offset) {
   // -2 to adjust for the bytecode for the jump offset itself
-  int jump = curChunk()->cnt - offset - 2;
+  int jump = curChunk(current)->cnt - offset - 2;
 
   if (jump > UINT16_MAX) {
     error("Too much code to jump over");
   }
 
-  curChunk()->code[offset] = (jump >> 8) & 0xff;
-  curChunk()->code[offset + 1] = jump & 0xff;
+  curChunk(current)->code[offset] = (jump >> 8) & 0xff;
+  curChunk(current)->code[offset + 1] = jump & 0xff;
 }
 
 static void initCompiler(Compiler *compiler, FunctionType type) {
@@ -232,12 +235,12 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   compiler->type = type;
   compiler->localCount = 0;
   compiler->scopeDepth = 0;
-  compiler->symbolCnt = 0;
+  compiler->constantsCnt = 0;
   compiler->fn = newFunction();
   current = compiler;
 
   if (type != TYPE_SCRIPT) {
-    current->fn->name = copyString(parser.prv.start, parser.prv.length);
+    current->fn->name = copyString(parser.prv.start, parser.prv.len);
   }
 
   Local *local = &current->locals[current->localCount++];
@@ -245,10 +248,10 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   local->isCaptured = false;
   if (type != TYPE_FUNCTION) {
     local->name.start = "this";
-    local->name.length = 4;
+    local->name.len = 4;
   } else {
     local->name.start = "";
-    local->name.length = 0;
+    local->name.len = 0;
   }
 }
 
@@ -258,7 +261,7 @@ static ObjFn *endCompiler(void) {
 
 #ifdef DEBUG_PRINT_CODE
   if (!parser.hadError) {
-    disassembleChunk(curChunk(),
+    disassembleChunk(curChunk(current),
                      fn->name != NULL ? fn->name->chars : "<script>");
   }
 #endif
@@ -287,14 +290,14 @@ static inline ParseRule *getRule(TokenType type);
 static void parsePrecedence(Precedence precedence);
 
 static inline uint8_t identifierConst(Token *name) {
-  return makeConstant(OBJ_VAL(copyString(name->start, name->length)));
+  return makeConstant(OBJ_VAL(copyString(name->start, name->len)));
 }
 
 static inline bool identifiersEqual(Token *a, Token *b) {
-  if (a->length != b->length) {
+  if (a->len != b->len) {
     return false;
   }
-  return memcmp(a->start, b->start, a->length) == 0;
+  return memcmp(a->start, b->start, a->len) == 0;
 }
 
 static int resolveLocal(Compiler *compiler, Token *name) {
@@ -545,7 +548,7 @@ static void or_(bool canAssign) {
 static void string(bool canAssign) {
   (void)canAssign;
   Token prv = parser.prv;
-  emitConstant(OBJ_VAL(copyString(prv.start + 1, prv.length - 2)));
+  emitConstant(OBJ_VAL(copyString(prv.start + 1, prv.len - 2)));
 }
 
 static void namedVariable(Token name, bool canAssign) {
@@ -579,7 +582,7 @@ static inline void variable(bool canAssign) {
 static inline Token syntheticToken(const char *txt) {
   Token token;
   token.start = txt;
-  token.length = (int)strlen(txt);
+  token.len = (int)strlen(txt);
   return token;
 }
 
@@ -723,7 +726,7 @@ static void function(FunctionType type) {
     do {
       current->fn->arity++;
       if (current->fn->arity > 255) {
-        errorAtCurrent("Can't have more thatn 255 parameters");
+        errorAtCurrent("Can't have more than 255 parameters");
       }
       uint8_t constIdx = parseVariable("Expect parameter name");
       defineVariable(constIdx);
@@ -747,7 +750,7 @@ static void method(void) {
   uint8_t constant = identifierConst(&parser.prv);
 
   FunctionType type = TYPE_METHOD;
-  if (parser.prv.length == 4 && memcmp(parser.prv.start, "init", 4) == 0) {
+  if (parser.prv.len == 4 && memcmp(parser.prv.start, "init", 4) == 0) {
     type = TYPE_INITIALIZER;
   }
   function(type);
@@ -763,8 +766,7 @@ static void classDecl(void) {
   emitBytes(OP_CLASS, nameConst);
   defineVariable(nameConst);
 
-  ClassCompiler classCompiler;
-  classCompiler.enclosing = currentClass;
+  ClassCompiler classCompiler = {currentClass, false};
   currentClass = &classCompiler;
 
   if (match(TOKEN_LESS)) {
@@ -836,7 +838,7 @@ static void forStmt(void) {
     expressionStmt();
   }
 
-  int loopStartIdx = curChunk()->cnt;
+  int loopStartIdx = curChunk(current)->cnt;
   int exitJmpIdx = -1;
   if (!match(TOKEN_SEMICOLON)) {
     expression();
@@ -849,7 +851,7 @@ static void forStmt(void) {
 
   if (!match(TOKEN_RIGHT_PAREN)) {
     int bodyJmpIdx = emitJump(OP_JUMP);
-    int incrStartIdx = curChunk()->cnt;
+    int incrStartIdx = curChunk(current)->cnt;
     expression();
     emitByte(OP_POP);
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after clauses");
@@ -914,7 +916,7 @@ static void returnStmt(void) {
 }
 
 static void whileStmt(void) {
-  int loopStartIdx = curChunk()->cnt;
+  int loopStartIdx = curChunk(current)->cnt;
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'");
   expression();
   consume(TOKEN_RIGHT_PAREN, "Expect '(' after condition");
@@ -928,14 +930,14 @@ static void whileStmt(void) {
   emitByte(OP_POP);
 }
 
-static void synchronize(void) {
-  parser.panicMode = false;
+static void synchronize(Parser *parser) {
+  parser->panicMode = false;
 
-  while (parser.cur.type != TOKEN_EOF) {
-    if (parser.prv.type == TOKEN_SEMICOLON) {
+  while (parser->cur.type != TOKEN_EOF) {
+    if (parser->prv.type == TOKEN_SEMICOLON) {
       return;
     }
-    switch (parser.cur.type) {
+    switch (parser->cur.type) {
     case TOKEN_CLASS:
     case TOKEN_FUN:
     case TOKEN_VAR:
@@ -965,7 +967,7 @@ static void declaration(void) {
   }
 
   if (parser.panicMode) {
-    synchronize();
+    synchronize(&parser);
   }
 }
 

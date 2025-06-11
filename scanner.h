@@ -52,7 +52,7 @@ typedef enum {
 typedef struct {
   TokenType type;
   const char *start;
-  int length, line;
+  int len, line;
 } Token;
 
 void initScanner(const char *source);

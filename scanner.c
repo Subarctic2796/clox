@@ -50,7 +50,7 @@ static inline Token makeToken(TokenType type) {
   Token token = {
       .type = type,
       .start = scanner.start,
-      .length = (int)(scanner.cur - scanner.start),
+      .len = (int)(scanner.cur - scanner.start),
       .line = scanner.line,
   };
   return token;
@@ -60,7 +60,7 @@ static inline Token errorToken(const char *msg) {
   Token token = {
       .type = TOKEN_ERROR,
       .start = msg,
-      .length = (int)strlen(msg),
+      .len = (int)strlen(msg),
       .line = scanner.line,
   };
   return token;
@@ -153,7 +153,7 @@ static inline TokenType identifierType(void) {
   return TOKEN_IDENTIFIER;
 }
 
-static Token makeIdent(void) {
+static inline Token makeIdent(void) {
   while (isAlpha(peek()) || isDigit(peek())) {
     advance();
   }
