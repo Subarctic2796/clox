@@ -8,6 +8,7 @@
 #include "memory.h"
 #include "scanner.h"
 #include "value.h"
+#include "vm.h"
 
 #ifdef DEBUG_PRINT_CODE
 #include "debug.h"
@@ -202,7 +203,16 @@ static uint8_t makeConstant(Value value) {
     return (uint8_t)existing; // reuse existing constant
   }
 
+  // make sure not collected
+  if (IS_OBJ(value)) {
+    pushRoot(value);
+  }
   int constIdx = addConst(curChunk(current), value);
+  // its safet so can remove it from temp roots
+  if (IS_OBJ(value)) {
+    popRoot();
+  }
+
   if (constIdx > UINT8_MAX) {
     error("Too many constants in on chunk");
     return 0;

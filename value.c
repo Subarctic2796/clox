@@ -109,7 +109,7 @@ static uint32_t hashObject(Obj *object) {
     return ((ObjClass *)object)->name->hash;
   case OBJ_FUNCTION: {
     ObjFn *fn = (ObjFn *)object;
-    return hashNumber(fn->arity) ^ hashNumber(fn->chunk.cnt);
+    return hashNumber(fn->arity) ^ hashNumber(fn->chunk.cnt) ^ fn->name->hash;
   }
   case OBJ_STRING:
     return ((ObjString *)object)->hash;
