@@ -55,7 +55,7 @@ typedef struct {
   int len, line;
 } Token;
 
-void initScanner(const char *source);
+void initLexer(const char *source);
 Token scanToken(void);
 
 #endif // INCLUDE_CLOX_SCANNER_H_

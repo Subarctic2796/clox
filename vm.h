@@ -51,7 +51,7 @@ extern VM vm;
 void initVM(void);
 void freeVM(void);
 InterpretResult interpret(const char *source);
-void pushRoot(Value val);
-void popRoot();
+static inline void pushRoot(Value value) { vm.tempRoots[vm.tempCnt++] = value; }
+static inline void popRoot(void) { vm.tempCnt--; }
 
 #endif // INCLUDE_CLOX_VM_H_

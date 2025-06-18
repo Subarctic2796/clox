@@ -1,4 +1,4 @@
-#include "scanner.h"
+#include "lexer.h"
 #include <stdbool.h>
 #include <string.h>
 
@@ -6,52 +6,52 @@ typedef struct {
   const char *start;
   const char *cur;
   size_t line;
-} Scanner;
+} Lexer;
 
-Scanner scanner;
+Lexer lexer;
 
-void initScanner(const char *source) {
-  scanner.start = source;
-  scanner.cur = source;
-  scanner.line = 1;
+void initLexer(const char *source) {
+  lexer.start = source;
+  lexer.cur = source;
+  lexer.line = 1;
 }
 
 static inline bool isAlpha(char c) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
-static inline bool isAtEnd(void) { return *scanner.cur == '\0'; }
+static inline bool isAtEnd(void) { return *lexer.cur == '\0'; }
 
 static inline char advance(void) {
-  scanner.cur++;
-  return scanner.cur[-1];
+  lexer.cur++;
+  return lexer.cur[-1];
 }
 
-static inline char peek(void) { return *scanner.cur; }
+static inline char peek(void) { return *lexer.cur; }
 static inline char peekNext(void) {
   if (isAtEnd()) {
     return '\0';
   }
-  return scanner.cur[1];
+  return lexer.cur[1];
 }
 
 static inline bool match(char expected) {
   if (isAtEnd()) {
     return false;
   }
-  if (*scanner.cur != expected) {
+  if (*lexer.cur != expected) {
     return false;
   }
-  scanner.cur++;
+  lexer.cur++;
   return true;
 }
 
 static inline Token makeToken(TokenType type) {
   Token token = {
       .type = type,
-      .start = scanner.start,
-      .len = (int)(scanner.cur - scanner.start),
-      .line = scanner.line,
+      .start = lexer.start,
+      .len = (int)(lexer.cur - lexer.start),
+      .line = lexer.line,
   };
   return token;
 }
@@ -61,7 +61,7 @@ static inline Token errorToken(const char *msg) {
       .type = TOKEN_ERROR,
       .start = msg,
       .len = (int)strlen(msg),
-      .line = scanner.line,
+      .line = lexer.line,
   };
   return token;
 }
@@ -76,7 +76,7 @@ static inline void skipWhiteSpace(void) {
       advance();
       break;
     case '\n':
-      scanner.line++;
+      lexer.line++;
       advance();
       break;
     case '/':
@@ -96,15 +96,15 @@ static inline void skipWhiteSpace(void) {
 
 static inline TokenType checkKeyword(int start, int length, const char *rest,
                                      TokenType type) {
-  if (scanner.cur - scanner.start == start + length &&
-      memcmp(scanner.start + start, rest, length) == 0) {
+  if (lexer.cur - lexer.start == start + length &&
+      memcmp(lexer.start + start, rest, length) == 0) {
     return type;
   }
   return TOKEN_IDENTIFIER;
 }
 
 static inline TokenType identifierType(void) {
-  switch (scanner.start[0]) {
+  switch (lexer.start[0]) {
   case 'a':
     return checkKeyword(1, 2, "nd", TOKEN_AND);
   case 'c':
@@ -112,8 +112,8 @@ static inline TokenType identifierType(void) {
   case 'e':
     return checkKeyword(1, 3, "lse", TOKEN_ELSE);
   case 'f':
-    if (scanner.cur - scanner.start > 1) {
-      switch (scanner.start[1]) {
+    if (lexer.cur - lexer.start > 1) {
+      switch (lexer.start[1]) {
       case 'a':
         return checkKeyword(2, 3, "lse", TOKEN_FALSE);
       case 'o':
@@ -136,8 +136,8 @@ static inline TokenType identifierType(void) {
   case 's':
     return checkKeyword(1, 4, "uper", TOKEN_SUPER);
   case 't':
-    if (scanner.cur - scanner.start > 1) {
-      switch (scanner.start[1]) {
+    if (lexer.cur - lexer.start > 1) {
+      switch (lexer.start[1]) {
       case 'h':
         return checkKeyword(2, 2, "is", TOKEN_THIS);
       case 'r':
@@ -180,7 +180,7 @@ static inline Token makeNumber(void) {
 static inline Token makeString(void) {
   while (peek() != '"' && !isAtEnd()) {
     if (peek() == '\n') {
-      scanner.line++;
+      lexer.line++;
     }
     advance();
   }
@@ -194,7 +194,7 @@ static inline Token makeString(void) {
 
 Token scanToken(void) {
   skipWhiteSpace();
-  scanner.start = scanner.cur;
+  lexer.start = lexer.cur;
 
   if (isAtEnd()) {
     return makeToken(TOKEN_EOF);

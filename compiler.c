@@ -5,8 +5,8 @@
 
 #include "common.h"
 #include "compiler.h"
+#include "lexer.h"
 #include "memory.h"
-#include "scanner.h"
 #include "value.h"
 #include "vm.h"
 
@@ -203,6 +203,7 @@ static uint8_t makeConstant(Value value) {
     return (uint8_t)existing; // reuse existing constant
   }
 
+  // add constant
   // make sure not collected
   if (IS_OBJ(value)) {
     pushRoot(value);
@@ -275,6 +276,7 @@ static ObjFn *endCompiler(void) {
                      fn->name != NULL ? fn->name->chars : "<script>");
   }
 #endif
+  // free constants table
   current = current->enclosing;
   return fn;
 }
@@ -326,9 +328,11 @@ static int resolveLocal(Compiler *compiler, Token *name) {
 static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
   int upvalueCnt = compiler->fn->upvalueCnt;
 
+  // check if upvalue already exists
   for (int i = 0; i < upvalueCnt; i++) {
     Upvalue *upvalue = &compiler->upvalues[i];
     if (upvalue->index == index && upvalue->isLocal == isLocal) {
+      // reuse existing upvalue
       return i;
     }
   }
@@ -585,7 +589,6 @@ static void namedVariable(Token name, bool canAssign) {
 }
 
 static inline void variable(bool canAssign) {
-  (void)canAssign;
   namedVariable(parser.prv, canAssign);
 }
 
@@ -710,7 +713,7 @@ static void parsePrecedence(Precedence precedence) {
     infixRule(canAssign);
 
     if (canAssign && match(TOKEN_EQUAL)) {
-      error("Invalid assignmetn target");
+      error("Invalid assignment target");
     }
   }
 }
@@ -929,7 +932,7 @@ static void whileStmt(void) {
   int loopStartIdx = curChunk(current)->cnt;
   consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'");
   expression();
-  consume(TOKEN_RIGHT_PAREN, "Expect '(' after condition");
+  consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
 
   int exitJmpIdx = emitJump(OP_JUMP_IF_FALSE);
   emitByte(OP_POP);
@@ -1002,7 +1005,7 @@ static void statement(void) {
 }
 
 ObjFn *compile(const char *source) {
-  initScanner(source);
+  initLexer(source);
   Compiler compiler;
   initCompiler(&compiler, TYPE_SCRIPT);
 

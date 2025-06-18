@@ -96,9 +96,6 @@ static inline void push(Value value) { *vm.sp++ = value; }
 static inline Value pop(void) { return *(--vm.sp); }
 static inline Value peek(int dist) { return vm.sp[-1 - dist]; }
 
-void pushRoot(Value value) { vm.tempRoots[vm.tempCnt++] = value; }
-void popRoot() { vm.tempCnt--; }
-
 static bool call(ObjClosure *closure, int argc) {
   if (argc != closure->fn->arity) {
     runtimeError("Expected %d arguments but got %d", closure->fn->arity, argc);
@@ -289,7 +286,7 @@ static InterpretResult run(void) {
     disassembleInst(&frame->closure->fn->chunk,
                     (int)(frame->ip - frame->closure->fn->chunk.code));
 #endif
-    switch (inst = READ_BYTE()) {
+    switch (inst = (OpCode)READ_BYTE()) {
     case OP_CONSTANT: {
       Value constant = READ_CONST();
       push(constant);
