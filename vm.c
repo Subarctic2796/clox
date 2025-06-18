@@ -152,16 +152,16 @@ static bool callValue(Value callee, int argCnt) {
   return false;
 }
 
-static inline bool invokeFromClass(ObjClass *klass, ObjString *name, int argc) {
+static inline bool invokeFromClass(ObjClass *klass, Value name, int argc) {
   Value method;
-  if (!tableGet(&klass->methods, OBJ_VAL(name), &method)) {
-    runtimeError("Undefined property '%s'", name->chars);
+  if (!tableGet(&klass->methods, name, &method)) {
+    runtimeError("Undefined property '%s'", AS_STRING(name)->chars);
     return false;
   }
   return call(AS_CLOSURE(method), argc);
 }
 
-static bool invoke(ObjString *name, int argCnt) {
+static bool invoke(Value name, int argCnt) {
   Value receiver = peek(argCnt);
 
   if (!IS_INSTANCE(receiver)) {
@@ -172,7 +172,7 @@ static bool invoke(ObjString *name, int argCnt) {
   ObjInstance *instance = AS_INSTANCE(receiver);
 
   Value value;
-  if (tableGet(&instance->fields, OBJ_VAL(name), &value)) {
+  if (tableGet(&instance->fields, name, &value)) {
     vm.sp[-argCnt - 1] = value;
     return callValue(value, argCnt);
   }
@@ -180,10 +180,10 @@ static bool invoke(ObjString *name, int argCnt) {
   return invokeFromClass(instance->klass, name, argCnt);
 }
 
-static bool bindMethod(ObjClass *klass, ObjString *name) {
+static bool bindMethod(ObjClass *klass, Value name) {
   Value method;
-  if (!tableGet(&klass->methods, OBJ_VAL(name), &method)) {
-    runtimeError("Undefined property '%s'", name->chars);
+  if (!tableGet(&klass->methods, name, &method)) {
+    runtimeError("Undefined property '%s'", AS_STRING(name)->chars);
     return false;
   }
 
@@ -322,10 +322,10 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_GET_GLOBAL: {
-      ObjString *name = READ_STRING();
+      Value name = READ_CONST();
       Value value;
-      if (!tableGet(&vm.globals, OBJ_VAL(name), &value)) {
-        runtimeError("Undefined variable '%s'", name->chars);
+      if (!tableGet(&vm.globals, name, &value)) {
+        runtimeError("Undefined variable '%s'", AS_STRING(name)->chars);
         return INTERPRET_RUNTIME_ERR;
       }
       push(value);
@@ -333,17 +333,17 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_DEFINE_GLOBAL: {
-      ObjString *name = READ_STRING();
-      tableSet(&vm.globals, OBJ_VAL(name), peek(0));
+      Value name = READ_CONST();
+      tableSet(&vm.globals, name, peek(0));
       pop();
       break;
       // goto loop;
     }
     case OP_SET_GLOBAL: {
-      ObjString *name = READ_STRING();
-      if (tableSet(&vm.globals, OBJ_VAL(name), peek(0))) {
-        tableDelete(&vm.globals, OBJ_VAL(name));
-        runtimeError("Undefined variable '%s'", name->chars);
+      Value name = READ_CONST();
+      if (tableSet(&vm.globals, name, peek(0))) {
+        tableDelete(&vm.globals, name);
+        runtimeError("Undefined variable '%s'", AS_STRING(name)->chars);
         return INTERPRET_RUNTIME_ERR;
       }
       break;
@@ -368,9 +368,9 @@ static InterpretResult run(void) {
       }
 
       ObjInstance *instance = AS_INSTANCE(peek(0));
-      ObjString *name = READ_STRING();
+      Value name = READ_CONST();
       Value value;
-      if (tableGet(&instance->fields, OBJ_VAL(name), &value)) {
+      if (tableGet(&instance->fields, name, &value)) {
         pop(); // instance
         push(value);
         break;
@@ -389,7 +389,7 @@ static InterpretResult run(void) {
         return INTERPRET_RUNTIME_ERR;
       }
       ObjInstance *instance = AS_INSTANCE(peek(1));
-      tableSet(&instance->fields, OBJ_VAL(READ_STRING()), peek(0));
+      tableSet(&instance->fields, READ_CONST(), peek(0));
       Value value = pop();
       pop();
       push(value);
@@ -397,7 +397,7 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_GET_SUPER: {
-      ObjString *name = READ_STRING();
+      Value name = READ_CONST();
       ObjClass *superclass = AS_CLASS(pop());
 
       if (!bindMethod(superclass, name)) {
@@ -496,7 +496,7 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_INVOKE: {
-      ObjString *method = READ_STRING();
+      Value method = READ_CONST();
       int argCnt = READ_BYTE();
       if (!invoke(method, argCnt)) {
         return INTERPRET_RUNTIME_ERR;
@@ -506,7 +506,7 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_SUPER_INVOKE: {
-      ObjString *method = READ_STRING();
+      Value method = READ_CONST();
       int argCnt = READ_BYTE();
       ObjClass *superclass = AS_CLASS(pop());
       if (!invokeFromClass(superclass, method, argCnt)) {

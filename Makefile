@@ -1,8 +1,8 @@
 .PHONY: build clean debug run release
 
 BIN = clox
-CC = gcc
-# CC = clang
+# CC = gcc
+CC = clang
 CFLAGS = -Wall -Wextra -Wpedantic -std=c99
 DEBUG_FLAGS = -ggdb -DLOX_DEBUG -fno-omit-frame-pointer -fsanitize=address
 RELEASE_FLAGS = -O3 -flto
