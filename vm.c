@@ -226,10 +226,10 @@ static void closeUpvalues(Value *last) {
   }
 }
 
-static void defineMethod(ObjString *name) {
+static void defineMethod(Value name) {
   Value method = peek(0);
   ObjClass *klass = AS_CLASS(peek(1));
-  tableSet(&klass->methods, OBJ_VAL(name), method);
+  tableSet(&klass->methods, name, method);
   pop();
 }
 
@@ -272,20 +272,29 @@ static InterpretResult run(void) {
     push(valueType(a op b));                                                   \
   } while (false)
 
-  for (;;) {
-    uint8_t inst;
-// loop:
 #ifdef DEBUG_TRACE_EXECUTION
-    printf("          ");
-    for (Value *slot = vm.stack; slot < vm.sp; slot++) {
-      printf("[ ");
-      printValue(*slot);
-      printf(" ]");
-    }
-    printf("\n");
-    disassembleInst(&frame->closure->fn->chunk,
-                    (int)(frame->ip - frame->closure->fn->chunk.code));
+#define TRACE_EXECUTION()                                                      \
+  do {                                                                         \
+    printf("          ");                                                      \
+    for (Value *slot = vm.stack; slot < vm.sp; slot++) {                       \
+      printf("[ ");                                                            \
+      printValue(*slot);                                                       \
+      printf(" ]");                                                            \
+    }                                                                          \
+    printf("\n");                                                              \
+    disassembleInst(&frame->closure->fn->chunk,                                \
+                    (int)(frame->ip - frame->closure->fn->chunk.code));        \
+  } while (false)
+#else
+#define TRACE_EXECUTION()                                                      \
+  do {                                                                         \
+  } while (false)
 #endif
+
+  uint8_t inst;
+  for (;;) {
+    // loop:
+    TRACE_EXECUTION();
     switch (inst = (OpCode)READ_BYTE()) {
     case OP_CONSTANT: {
       Value constant = READ_CONST();
@@ -461,7 +470,13 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_PRINT: {
+#ifdef LOX_DEBUG
+      printf("\033[1;33m");
+#endif /* ifdef LOX_DEBUG */
       printValue(pop());
+#ifdef LOX_DEBUG
+      printf("\033[0m");
+#endif /* ifdef LOX_DEBUG */
       printf("\n");
       break;
       // goto loop;
@@ -571,7 +586,7 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_METHOD:
-      defineMethod(READ_STRING());
+      defineMethod(READ_CONST());
       break;
       // goto loop;
     }
@@ -582,6 +597,7 @@ static InterpretResult run(void) {
 #undef READ_CONST
 #undef READ_STRING
 #undef BINARY_OP
+#undef TRACE_EXECUTION
 
   return INTERPRET_OK;
 }

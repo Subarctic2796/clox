@@ -1,8 +1,7 @@
-#include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "chunk.h"
 #include "common.h"
 #include "compiler.h"
 #include "lexer.h"
@@ -44,7 +43,7 @@ typedef struct {
 typedef struct {
   Token name;
   int depth;
-  bool isCaptured;
+  OpCode exitOP;
 } Local;
 
 typedef struct {
@@ -103,12 +102,15 @@ static void errorAt(Token *token, const char *message) {
   parser.panicMode = true;
   fprintf(stderr, "[line %d] Error", token->line);
 
-  if (token->type == TOKEN_EOF) {
+  switch (token->type) {
+  case TOKEN_EOF:
     fprintf(stderr, " at end");
-  } else if (token->type == TOKEN_ERROR) {
-    // nothing
-  } else {
+    break;
+  case TOKEN_ERROR:
+    break;
+  default:
     fprintf(stderr, " at '%.*s'", token->len, token->start);
+    break;
   }
 
   fprintf(stderr, ": %s\n", message);
@@ -167,14 +169,12 @@ static void emitLoop(int loopStart) {
     error("Loop body too large");
   }
 
-  emitByte((offset >> 8) & 0xff);
-  emitByte(offset & 0xff);
+  emitBytes((offset >> 8) & 0xff, offset & 0xff);
 }
 
 static inline int emitJump(uint8_t inst) {
   emitByte(inst);
-  emitByte(0xff);
-  emitByte(0xff);
+  emitBytes(0xff, 0xff);
   return curChunk(current)->cnt - 2;
 }
 
@@ -209,7 +209,7 @@ static uint8_t makeConstant(Value value) {
     pushRoot(value);
   }
   int constIdx = addConst(curChunk(current), value);
-  // its safet so can remove it from temp roots
+  // its safe so can remove it from temp roots
   if (IS_OBJ(value)) {
     popRoot();
   }
@@ -256,7 +256,7 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
 
   Local *local = &current->locals[current->localCount++];
   local->depth = 0;
-  local->isCaptured = false;
+  local->exitOP = OP_POP;
   if (type != TYPE_FUNCTION) {
     local->name.start = "this";
     local->name.len = 4;
@@ -286,11 +286,7 @@ static void endScope(void) {
   current->scopeDepth--;
   while (current->localCount > 0 &&
          current->locals[current->localCount - 1].depth > current->scopeDepth) {
-    if (current->locals[current->localCount - 1].isCaptured) {
-      emitByte(OP_CLOSE_UPVALUE);
-    } else {
-      emitByte(OP_POP);
-    }
+    emitByte(current->locals[current->localCount - 1].exitOP);
     current->localCount--;
   }
 }
@@ -354,7 +350,7 @@ static int resolveUpvalue(Compiler *compiler, Token *name) {
 
   int local = resolveLocal(compiler->enclosing, name);
   if (local != -1) {
-    compiler->enclosing->locals[local].isCaptured = true;
+    compiler->enclosing->locals[local].exitOP = OP_CLOSE_UPVALUE;
     return addUpvalue(compiler, (uint8_t)local, true);
   }
 
@@ -375,7 +371,7 @@ static void addLocal(Token name) {
   Local *local = &current->locals[current->localCount++];
   local->name = name;
   local->depth = -1;
-  local->isCaptured = false;
+  local->exitOP = OP_POP;
 }
 
 static void declareVariable(void) {
