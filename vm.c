@@ -248,14 +248,16 @@ static void concatenate(void) {
   chars[length] = '\0';
 
   ObjString *result = takeString(chars, length);
-  pop();
-  pop();
+  vm.sp -= 2; // pop the 2 strings ontop of the stack
   push(OBJ_VAL(result));
 }
 
 static InterpretResult run(void) {
   CallFrame *frame = &vm.frames[vm.frameCount - 1];
 
+#define PUSH(value) (*vm.sp++ = value)
+#define POP() (*(--vm.sp))
+#define PEEK(dist) (*(vm.sp - 1 - dist))
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT()                                                           \
   (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
@@ -263,13 +265,13 @@ static InterpretResult run(void) {
 #define READ_STRING() AS_STRING(READ_CONST())
 #define BINARY_OP(valueType, op)                                               \
   do {                                                                         \
-    if (!IS_NUMBER(peek(0)) || !IS_NUMBER(peek(1))) {                          \
+    if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) {                          \
       runtimeError("Operands must be numbers");                                \
       return INTERPRET_RUNTIME_ERR;                                            \
     }                                                                          \
-    double b = AS_NUMBER(pop());                                               \
-    double a = AS_NUMBER(pop());                                               \
-    push(valueType(a op b));                                                   \
+    double b = AS_NUMBER(POP());                                               \
+    double a = AS_NUMBER(POP());                                               \
+    PUSH(valueType(a op b));                                                   \
   } while (false)
 
 #ifdef DEBUG_TRACE_EXECUTION
@@ -298,35 +300,35 @@ static InterpretResult run(void) {
     switch (inst = (OpCode)READ_BYTE()) {
     case OP_CONSTANT: {
       Value constant = READ_CONST();
-      push(constant);
+      PUSH(constant);
       break;
       // goto loop;
     }
     case OP_NIL:
-      push(NIL_VAL);
+      PUSH(NIL_VAL);
       break;
       // goto loop;
     case OP_TRUE:
-      push(BOOL_VAL(true));
+      PUSH(BOOL_VAL(true));
       break;
       // goto loop;
     case OP_FALSE:
-      push(BOOL_VAL(false));
+      PUSH(BOOL_VAL(false));
       break;
       // goto loop;
     case OP_POP:
-      pop();
+      POP();
       break;
       // goto loop;
     case OP_SET_LOCAL: {
       uint8_t slot = READ_BYTE();
-      frame->slots[slot] = peek(0);
+      frame->slots[slot] = PEEK(0);
       break;
       // goto loop;
     }
     case OP_GET_LOCAL: {
       uint8_t slot = READ_BYTE();
-      push(frame->slots[slot]);
+      PUSH(frame->slots[slot]);
       break;
       // goto loop;
     }
@@ -337,20 +339,20 @@ static InterpretResult run(void) {
         runtimeError("Undefined variable '%s'", AS_STRING(name)->chars);
         return INTERPRET_RUNTIME_ERR;
       }
-      push(value);
+      PUSH(value);
       break;
       // goto loop;
     }
     case OP_DEFINE_GLOBAL: {
       Value name = READ_CONST();
-      tableSet(&vm.globals, name, peek(0));
-      pop();
+      tableSet(&vm.globals, name, PEEK(0));
+      POP();
       break;
       // goto loop;
     }
     case OP_SET_GLOBAL: {
       Value name = READ_CONST();
-      if (tableSet(&vm.globals, name, peek(0))) {
+      if (tableSet(&vm.globals, name, PEEK(0))) {
         tableDelete(&vm.globals, name);
         runtimeError("Undefined variable '%s'", AS_STRING(name)->chars);
         return INTERPRET_RUNTIME_ERR;
@@ -360,28 +362,28 @@ static InterpretResult run(void) {
     }
     case OP_GET_UPVALUE: {
       uint8_t slot = READ_BYTE();
-      push(*frame->closure->upvalues[slot]->location);
+      PUSH(*frame->closure->upvalues[slot]->location);
       break;
       // goto loop;
     }
     case OP_SET_UPVALUE: {
       uint8_t slot = READ_BYTE();
-      *frame->closure->upvalues[slot]->location = peek(0);
+      *frame->closure->upvalues[slot]->location = PEEK(0);
       break;
       // goto loop;
     }
     case OP_GET_PROPERTY: {
-      if (!IS_INSTANCE(peek(0))) {
+      if (!IS_INSTANCE(PEEK(0))) {
         runtimeError("Only instances have properties");
         return INTERPRET_RUNTIME_ERR;
       }
 
-      ObjInstance *instance = AS_INSTANCE(peek(0));
+      ObjInstance *instance = AS_INSTANCE(PEEK(0));
       Value name = READ_CONST();
       Value value;
       if (tableGet(&instance->fields, name, &value)) {
-        pop(); // instance
-        push(value);
+        POP(); // instance
+        PUSH(value);
         break;
         // goto loop;
       }
@@ -393,21 +395,21 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_SET_PROPERTY: {
-      if (!IS_INSTANCE(peek(1))) {
+      if (!IS_INSTANCE(PEEK(1))) {
         runtimeError("Only instances have fields");
         return INTERPRET_RUNTIME_ERR;
       }
-      ObjInstance *instance = AS_INSTANCE(peek(1));
-      tableSet(&instance->fields, READ_CONST(), peek(0));
-      Value value = pop();
-      pop();
-      push(value);
+      ObjInstance *instance = AS_INSTANCE(PEEK(1));
+      tableSet(&instance->fields, READ_CONST(), PEEK(0));
+      Value value = POP();
+      POP();
+      PUSH(value);
       break;
       // goto loop;
     }
     case OP_GET_SUPER: {
       Value name = READ_CONST();
-      ObjClass *superclass = AS_CLASS(pop());
+      ObjClass *superclass = AS_CLASS(POP());
 
       if (!bindMethod(superclass, name)) {
         return INTERPRET_RUNTIME_ERR;
@@ -416,9 +418,9 @@ static InterpretResult run(void) {
       // goto loop;
     }
     case OP_EQUAL: {
-      Value b = pop();
-      Value a = pop();
-      push(BOOL_VAL(valuesEqual(a, b)));
+      Value b = POP();
+      Value a = POP();
+      PUSH(BOOL_VAL(valuesEqual(a, b)));
       break;
       // goto loop;
     }
@@ -431,12 +433,12 @@ static InterpretResult run(void) {
       break;
       // goto loop;
     case OP_ADD: {
-      if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
+      if (IS_STRING(PEEK(0)) && IS_STRING(PEEK(1))) {
         concatenate();
-      } else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))) {
-        double b = AS_NUMBER(pop());
-        double a = AS_NUMBER(pop());
-        push(NUMBER_VAL(a + b));
+      } else if (IS_NUMBER(PEEK(0)) && IS_NUMBER(PEEK(1))) {
+        double b = AS_NUMBER(POP());
+        double a = AS_NUMBER(POP());
+        PUSH(NUMBER_VAL(a + b));
       } else {
         runtimeError("Operands must be two numbers or two strings");
         return INTERPRET_RUNTIME_ERR;
@@ -457,15 +459,15 @@ static InterpretResult run(void) {
       break;
       // goto loop;
     case OP_NOT:
-      push(BOOL_VAL(isFalsey(pop())));
+      PUSH(BOOL_VAL(isFalsey(POP())));
       break;
       // goto loop;
     case OP_NEGATE: {
-      if (!IS_NUMBER(peek(0))) {
+      if (!IS_NUMBER(PEEK(0))) {
         runtimeError("Operand must be a number");
         return INTERPRET_RUNTIME_ERR;
       }
-      push(NUMBER_VAL(-AS_NUMBER(pop())));
+      PUSH(NUMBER_VAL(-AS_NUMBER(POP())));
       break;
       // goto loop;
     }
@@ -473,7 +475,7 @@ static InterpretResult run(void) {
 #ifdef LOX_DEBUG
       printf("\033[1;33m");
 #endif /* ifdef LOX_DEBUG */
-      printValue(pop());
+      printValue(POP());
 #ifdef LOX_DEBUG
       printf("\033[0m");
 #endif /* ifdef LOX_DEBUG */
@@ -489,7 +491,7 @@ static InterpretResult run(void) {
     }
     case OP_JUMP_IF_FALSE: {
       uint16_t offset = READ_SHORT();
-      if (isFalsey(peek(0))) {
+      if (isFalsey(PEEK(0))) {
         frame->ip += offset;
       }
       break;
@@ -503,7 +505,7 @@ static InterpretResult run(void) {
     }
     case OP_CALL: {
       int argCnt = READ_BYTE();
-      if (!callValue(peek(argCnt), argCnt)) {
+      if (!callValue(PEEK(argCnt), argCnt)) {
         return INTERPRET_RUNTIME_ERR;
       }
       frame = &vm.frames[vm.frameCount - 1];
@@ -523,7 +525,7 @@ static InterpretResult run(void) {
     case OP_SUPER_INVOKE: {
       Value method = READ_CONST();
       int argCnt = READ_BYTE();
-      ObjClass *superclass = AS_CLASS(pop());
+      ObjClass *superclass = AS_CLASS(POP());
       if (!invokeFromClass(superclass, method, argCnt)) {
         return INTERPRET_RUNTIME_ERR;
       }
@@ -534,7 +536,7 @@ static InterpretResult run(void) {
     case OP_CLOSURE: {
       ObjFn *function = AS_FUNCTION(READ_CONST());
       ObjClosure *closure = newClosure(function);
-      push(OBJ_VAL(closure));
+      PUSH(OBJ_VAL(closure));
       for (int i = 0; i < closure->upvalueCnt; i++) {
         uint8_t isLocal = READ_BYTE();
         uint8_t index = READ_BYTE();
@@ -549,39 +551,39 @@ static InterpretResult run(void) {
     }
     case OP_CLOSE_UPVALUE: {
       closeUpvalues(vm.sp - 1);
-      pop();
+      POP();
       break;
       // goto loop;
     }
     case OP_RETURN: {
-      Value result = pop();
+      Value result = POP();
       closeUpvalues(frame->slots);
       vm.frameCount--;
       if (vm.frameCount == 0) {
-        pop();
+        POP();
         return INTERPRET_OK;
       }
 
       vm.sp = frame->slots;
-      push(result);
+      PUSH(result);
       frame = &vm.frames[vm.frameCount - 1];
       break;
       // goto loop;
     }
     case OP_CLASS:
-      push(OBJ_VAL(newClass(READ_STRING())));
+      PUSH(OBJ_VAL(newClass(READ_STRING())));
       break;
       // goto loop;
     case OP_INHERIT: {
-      Value superclass = peek(1);
+      Value superclass = PEEK(1);
       if (!IS_CLASS(superclass)) {
         runtimeError("Superclass must be a class");
         return INTERPRET_RUNTIME_ERR;
       }
 
-      ObjClass *subclass = AS_CLASS(peek(0));
+      ObjClass *subclass = AS_CLASS(PEEK(0));
       tableAddAll(&AS_CLASS(superclass)->methods, &subclass->methods);
-      pop(); // subclass
+      POP(); // subclass
       break;
       // goto loop;
     }
@@ -592,6 +594,9 @@ static InterpretResult run(void) {
     }
   } // loop end
 
+#undef PUSH
+#undef POP
+#undef PEEK
 #undef READ_BYTE
 #undef READ_SHORT
 #undef READ_CONST
