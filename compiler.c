@@ -745,12 +745,16 @@ static void function(FunctionType type) {
   consume(TOKEN_LEFT_BRACE, "Expect '{' before function body");
   block();
 
+  // don't need to call endScope as endCompiler
+  // closes the scope implicitly
   ObjFn *function = endCompiler();
   emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
 
   for (int i = 0; i < function->upvalueCnt; i++) {
-    emitByte(compiler.upvalues[i].isLocal ? 1 : 0);
-    emitByte(compiler.upvalues[i].index);
+    // true is represented as uint8_t 1
+    // false is represented as uint8_t 0
+    // so we can just write it straight
+    emitBytes(compiler.upvalues[i].isLocal, compiler.upvalues[i].index);
   }
 }
 
