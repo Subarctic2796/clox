@@ -591,7 +591,7 @@ static inline void variable(bool canAssign) {
 static inline Token syntheticToken(const char *txt) {
   Token token;
   token.start = txt;
-  token.len = (int)strlen(txt);
+  token.len = (int)strnlen(txt, 1024);
   return token;
 }
 
@@ -692,6 +692,8 @@ ParseRule rules[] = {
     [TOKEN_EOF] = {NULL, NULL, PREC_NONE},
 };
 
+static inline ParseRule *getRule(TokenType type) { return &rules[type]; }
+
 static void parsePrecedence(Precedence precedence) {
   advance();
   ParseFn prefixRule = getRule(parser.prv.type)->prefix;
@@ -714,7 +716,6 @@ static void parsePrecedence(Precedence precedence) {
   }
 }
 
-static inline ParseRule *getRule(TokenType type) { return &rules[type]; }
 static inline void expression(void) { parsePrecedence(PREC_ASSIGNMENT); }
 
 static void block(void) {

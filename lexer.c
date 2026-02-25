@@ -21,19 +21,9 @@ static inline bool isAlpha(char c) {
 }
 static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
 static inline bool isAtEnd(void) { return *lexer.cur == '\0'; }
-
-static inline char advance(void) {
-  lexer.cur++;
-  return lexer.cur[-1];
-}
-
+static inline char advance(void) { return *(lexer.cur++); }
 static inline char peek(void) { return *lexer.cur; }
-static inline char peekNext(void) {
-  if (isAtEnd()) {
-    return '\0';
-  }
-  return lexer.cur[1];
-}
+static inline char peekNext(void) { return isAtEnd() ? '\0' : lexer.cur[1]; }
 
 static inline bool match(char expected) {
   if (isAtEnd()) {
@@ -47,23 +37,21 @@ static inline bool match(char expected) {
 }
 
 static inline Token makeToken(TokenType type) {
-  Token token = {
+  return (Token){
       .type = type,
       .start = lexer.start,
       .len = (int)(lexer.cur - lexer.start),
       .line = lexer.line,
   };
-  return token;
 }
 
 static inline Token errorToken(const char *msg) {
-  Token token = {
+  return (Token){
       .type = TOKEN_ERROR,
       .start = msg,
-      .len = (int)strlen(msg),
+      .len = (int)strnlen(msg, 1024),
       .line = lexer.line,
   };
-  return token;
 }
 
 static inline void skipWhiteSpace(void) {

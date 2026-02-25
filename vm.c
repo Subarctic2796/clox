@@ -54,7 +54,7 @@ static void runtimeError(const char *format, ...) {
 }
 
 static void defineNative(const char *name, NativeFn function) {
-  ObjString *nativeName = copyString(name, (int)strlen(name));
+  ObjString *nativeName = copyString(name, (int)strnlen(name, 1024));
   pushRoot(OBJ_VAL(nativeName));
   ObjNative *fn = newNative(function);
   pushRoot(OBJ_VAL(fn));
