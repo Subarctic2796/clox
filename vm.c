@@ -15,7 +15,7 @@
 #include "object.h"
 #include "vm.h"
 
-VM vm;
+VM vm = {0};
 
 static Value clockNative(int argc, Value *args) {
   (void)argc;
@@ -311,7 +311,7 @@ static InterpretResult run(void) {
       PUSH(BOOL_VAL(false));
       break;
     case OP_POP:
-      POP();
+      (void)POP();
       break;
     case OP_SET_LOCAL: {
       uint8_t slot = READ_BYTE();
@@ -333,7 +333,7 @@ static InterpretResult run(void) {
     case OP_DEFINE_GLOBAL: {
       Value name = READ_CONST();
       tableSet(&vm.globals, name, PEEK(0));
-      POP();
+      (void)POP();
     } break;
     case OP_SET_GLOBAL: {
       Value name = READ_CONST();
@@ -361,7 +361,7 @@ static InterpretResult run(void) {
       Value name = READ_CONST();
       Value value;
       if (tableGet(&instance->fields, name, &value)) {
-        POP(); // instance
+        (void)POP(); // instance
         PUSH(value);
         break;
       }
@@ -378,7 +378,7 @@ static InterpretResult run(void) {
       ObjInstance *instance = AS_INSTANCE(PEEK(1));
       tableSet(&instance->fields, READ_CONST(), PEEK(0));
       Value value = POP();
-      POP();
+      (void)POP();
       PUSH(value);
     } break;
     case OP_GET_SUPER: {
@@ -495,14 +495,14 @@ static InterpretResult run(void) {
     } break;
     case OP_CLOSE_UPVALUE: {
       closeUpvalues(vm.sp - 1);
-      POP();
+      (void)POP();
     } break;
     case OP_RETURN: {
       Value result = POP();
       closeUpvalues(frame->slots);
       vm.frameCount--;
       if (vm.frameCount == 0) {
-        POP();
+        (void)POP();
         return INTERPRET_OK;
       }
 
@@ -522,7 +522,7 @@ static InterpretResult run(void) {
 
       ObjClass *subclass = AS_CLASS(PEEK(0));
       tableAddAll(&AS_CLASS(superclass)->methods, &subclass->methods);
-      POP(); // subclass
+      (void)POP(); // subclass
     } break;
     case OP_METHOD:
       defineMethod(READ_CONST());

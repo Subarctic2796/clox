@@ -87,7 +87,7 @@ typedef struct ClassCompiler {
   bool hasSuperClass;
 } ClassCompiler;
 
-Parser parser;
+Parser parser = {0};
 Compiler *current = NULL;
 ClassCompiler *currentClass = NULL;
 
@@ -321,7 +321,7 @@ static int resolveLocal(Compiler *compiler, Token *name) {
   return -1;
 }
 
-static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
+static inline int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
   int upvalueCnt = compiler->fn->upvalueCnt;
 
   // check if upvalue already exists
@@ -338,8 +338,7 @@ static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
     return 0;
   }
 
-  compiler->upvalues[upvalueCnt].isLocal = isLocal;
-  compiler->upvalues[upvalueCnt].index = index;
+  compiler->upvalues[upvalueCnt] = (Upvalue){index, isLocal};
   return compiler->fn->upvalueCnt++;
 }
 
@@ -368,10 +367,7 @@ static void addLocal(Token name) {
     return;
   }
 
-  Local *local = &current->locals[current->localCount++];
-  local->name = name;
-  local->depth = -1;
-  local->exitOP = OP_POP;
+  current->locals[current->localCount++] = (Local){name, -1, OP_POP};
 }
 
 static void declareVariable(void) {
@@ -589,7 +585,7 @@ static inline void variable(bool canAssign) {
 }
 
 static inline Token syntheticToken(const char *txt) {
-  Token token;
+  Token token = {0};
   token.start = txt;
   token.len = (int)strnlen(txt, 1024);
   return token;
@@ -1007,7 +1003,7 @@ static void statement(void) {
 
 ObjFn *compile(const char *source) {
   initLexer(source);
-  Compiler compiler;
+  Compiler compiler = {0};
   initCompiler(&compiler, TYPE_SCRIPT);
 
   parser.hadError = false;

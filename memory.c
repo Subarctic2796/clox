@@ -127,7 +127,7 @@ static void blackenObject(Obj *object) {
 
 static void freeObject(Obj *object) {
 #ifdef DEBUG_LOG_GC
-  printf("%p free %s\n", (void *)object, ObjToStrings[object->type]);
+  printf("%p free %s\n", (void *)object, ObjTypeString(object->type));
 #endif // ifdef DEBUG_LOG_GC
 
   switch (object->type) {
@@ -268,9 +268,9 @@ void collectGarbage(void) {
   vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;
 
 #ifdef DEBUG_LOG_GC
-  printf("-- gc end\n");
   printf("   collected %zu bytes (from %zu to %zu) next at %zu\n",
          before - vm.bytesAllocated, before, vm.bytesAllocated, vm.nextGC);
+  printf("-- gc end\n");
 #endif // ifdef DEBUG_LOG_GC
 }
 
