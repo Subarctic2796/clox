@@ -22,18 +22,4 @@ void markValue(Value value);
 void collectGarbage(void);
 void freeObjects(void);
 
-static inline const char *ObjTypeString(ObjType t) {
-  static const char *strings[] = {
-      [OBJ_BOUND_METHOD] = "OBJ_BOUND_METHOD",
-      [OBJ_CLASS] = "OBJ_CLASS",
-      [OBJ_CLOSURE] = "OBJ_CLOSURE",
-      [OBJ_FUNCTION] = "OBJ_FUNCTION",
-      [OBJ_INSTANCE] = "OBJ_INSTANCE",
-      [OBJ_NATIVE] = "OBJ_NATIVE",
-      [OBJ_STRING] = "OBJ_STRING",
-      [OBJ_UPVALUE] = "OBJ_UPVALUE",
-  };
-  return strings[t];
-}
-
 #endif // INCLUDE_CLOX_MEMORY_H_

@@ -6,14 +6,10 @@
 #include "object.h"
 #include "value.h"
 
-void initValueArray(ValueArray *array) {
-  array->values = NULL;
-  array->cap = 0;
-  array->cnt = 0;
-}
+void initValueArray(ValueArray *array) { *array = (ValueArray){0}; }
 
 void freeValueArray(ValueArray *array) {
-  FREE_ARRAY(uint8_t, array->values, array->cap);
+  FREE_ARRAY(Value, array->values, array->cap);
   initValueArray(array);
 }
 

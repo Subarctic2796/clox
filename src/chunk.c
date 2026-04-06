@@ -2,15 +2,7 @@
 #include "memory.h"
 #include "value.h"
 
-void initChunk(Chunk *chunk) {
-  chunk->cap = 0;
-  chunk->cnt = 0;
-  chunk->code = NULL;
-  chunk->lineCap = 0;
-  chunk->lineCnt = 0;
-  chunk->lines = NULL;
-  initValueArray(&chunk->constants);
-}
+void initChunk(Chunk *chunk) { *chunk = (Chunk){0}; }
 
 void writeChunk(Chunk *chunk, uint8_t byte, int line) {
   // grow code

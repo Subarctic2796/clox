@@ -7,11 +7,7 @@
 
 #define TABLE_MAX_LOAD 0.75
 
-void initTable(Table *table) {
-  table->cnt = 0;
-  table->cap = 0;
-  table->entries = NULL;
-}
+void initTable(Table *table) { *table = (Table){0}; }
 
 void freeTable(Table *table) {
   FREE_ARRAY(Entry, table->entries, table->cap);

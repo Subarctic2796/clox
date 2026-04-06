@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -127,6 +126,12 @@ ObjUpvalue *newUpvalue(Value *slot) {
   return upvalue;
 }
 
+ObjArray *newArray() {
+  ObjArray *arr = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
+  initValueArray(&arr->elements);
+  return arr;
+}
+
 static inline void printFunction(ObjFn *func) {
   if (func->name == NULL) {
     printf("<script>");
@@ -137,6 +142,17 @@ static inline void printFunction(ObjFn *func) {
 
 void printObject(Value value) {
   switch (OBJ_TYPE(value)) {
+  case OBJ_ARRAY: {
+    printf("[");
+    ValueArray elms = AS_ARRAY(value)->elements;
+    for (int i = 0; i < elms.cnt; i++) {
+      printValue(elms.values[i]);
+      if (i != elms.cnt - 1) {
+        printf(", ");
+      }
+    }
+    printf("]");
+  } break;
   case OBJ_BOUND_METHOD:
     printFunction(AS_BOUND_METHOD(value)->method->fn);
     break;
