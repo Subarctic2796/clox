@@ -125,6 +125,12 @@ ObjUpvalue *newUpvalue(Value *slot) {
     return upvalue;
 }
 
+ObjMap *newMap() {
+    ObjMap *map = ALLOCATE_OBJ(ObjMap, OBJ_MAP);
+    initTable(&map->table);
+    return map;
+}
+
 ObjArray *newArray() {
     ObjArray *arr = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
     initValueArray(&arr->elements);
@@ -150,8 +156,12 @@ void deleteFromArray(ObjArray *arr, int index) {
     arr->elements.values[arr->elements.cnt--] = NIL_VAL;
 }
 
-bool isValidArrayIndex(ObjArray *arr, int index) {
-    return index >= 0 && index < arr->elements.cnt - 1;
+int isValidIndex(Value value, int len) {
+    if (!IS_NUMBER(value)) return -1;
+    double index = AS_NUMBER(value);
+    if (index != (double)(int)index) return -2;
+    if ((int)index >= 0 && (int)index < len) return (int)index;
+    return -3;
 }
 
 static inline void printFunction(ObjFn *func) {
@@ -172,6 +182,22 @@ void printObject(Value value) {
             if (i != elms.cnt - 1) printf(", ");
         }
         printf("]");
+    } break;
+    case OBJ_MAP: {
+        printf("{");
+        Table elms = AS_MAP(value)->table;
+        bool first = true;
+        for (int i = 0; i < elms.cap; i++) {
+            Entry entry = elms.entries[i];
+            if (IS_EMPTY(entry.key)) continue;
+
+            if (!first) printf(", ");
+            first = false;
+            printValue(entry.key);
+            printf(": ");
+            printValue(entry.value);
+        }
+        printf("}");
     } break;
     case OBJ_BOUND_METHOD:
         printFunction(AS_BOUND_METHOD(value)->method->fn);

@@ -16,6 +16,7 @@
 #define IS_NATIVE(value)       isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)       isObjType(value, OBJ_STRING)
 #define IS_ARRAY(value)        isObjType(value, OBJ_ARRAY)
+#define IS_MAP(value)          isObjType(value, OBJ_MAP)
 
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod *)AS_OBJ(value))
 #define AS_CLASS(value)        ((ObjClass *)AS_OBJ(value))
@@ -24,6 +25,7 @@
 #define AS_INSTANCE(value)     ((ObjInstance *)AS_OBJ(value))
 #define AS_NATIVE(value)       (((ObjNative *)AS_OBJ(value))->function)
 #define AS_ARRAY(value)        ((ObjArray *)AS_OBJ(value))
+#define AS_MAP(value)          ((ObjMap *)AS_OBJ(value))
 #define AS_STRING(value)       ((ObjString *)AS_OBJ(value))
 #define AS_CSTRING(value)      (((ObjString *)AS_OBJ(value))->chars)
 
@@ -37,6 +39,7 @@ typedef enum {
     OBJ_STRING,
     OBJ_UPVALUE,
     OBJ_ARRAY,
+    OBJ_MAP,
 } ObjType;
 
 static inline const char *ObjTypeString(ObjType t) {
@@ -50,6 +53,7 @@ static inline const char *ObjTypeString(ObjType t) {
         [OBJ_STRING] = "OBJ_STRING",
         [OBJ_UPVALUE] = "OBJ_UPVALUE",
         [OBJ_ARRAY] = "OBJ_ARRAY",
+        [OBJ_MAP] = "OBJ_MAP",
     };
     return strings[t];
 }
@@ -119,7 +123,13 @@ typedef struct {
     ValueArray elements;
 } ObjArray;
 
+typedef struct {
+    Obj obj;
+    Table table;
+} ObjMap;
+
 ObjArray *newArray();
+ObjMap *newMap();
 ObjBoundMethod *newBoundMethod(Value reciever, ObjClosure *method);
 ObjClass *newClass(ObjString *name);
 ObjClosure *newClosure(ObjFn *fn);
@@ -134,10 +144,24 @@ void appendToArray(ObjArray *arr, Value value);
 void storeToArray(ObjArray *arr, int index, Value value);
 Value indexFromArray(ObjArray *arr, int index);
 void deleteFromArray(ObjArray *arr, int index);
-bool isValidArrayIndex(ObjArray *arr, int index);
+
+// returns -1 if value is not a number
+// returns -2 if value is not an integer
+// returns -3 if index is out of bounds
+// returns a +ve num on success
+int isValidIndex(Value value, int len);
 
 static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;
+}
+
+static inline bool isIndexable(Value value) {
+    return IS_STRING(value) || IS_ARRAY(value) || IS_MAP(value);
+}
+
+static inline bool isHashable(Value value) {
+    return IS_NUMBER(value) || IS_BOOL(value) || IS_NIL(value) ||
+           IS_STRING(value) || IS_INSTANCE(value);
 }
 
 #endif // INCLUDE_CLOX_OBJECT_H_

@@ -6,6 +6,7 @@
 #include "chunk.h"
 #include "common.h"
 #include "compiler.h"
+#include "table.h"
 #include "value.h"
 
 #ifdef DEBUG_TRACE_EXECUTION
@@ -43,16 +44,16 @@ static Value deleteNative(int argc, Value *args) {
     }
 
     ObjArray *arr = AS_ARRAY(args[0]);
-    double index = AS_NUMBER(args[1]);
+    int index = isValidIndex(args[1], arr->elements.cnt);
 
-    if (index != (double)((int)index)) {
+    if (index == -2) {
         // TODO: handle error
     }
-    if (!isValidArrayIndex(arr, (int)index)) {
+    if (index == -3) {
         // TODO: handle error
     }
 
-    deleteFromArray(arr, (int)index);
+    deleteFromArray(arr, index);
     return NIL_VAL;
 }
 
@@ -338,55 +339,112 @@ static InterpretResult run(void) {
         case OP_FALSE:     PUSH(BOOL_VAL(false)); break;
         case OP_POP:       (void)POP(); break;
         case OP_GET_INDEX: {
-            if (!IS_NUMBER(PEEK(0))) {
-                runtimeError("Can only use numbers to index arrays");
-                return INTERPRET_RUNTIME_ERR;
-            }
-            if (!IS_ARRAY(PEEK(1))) {
-                runtimeError("Can only index into arrays");
+            if (!isIndexable(PEEK(1))) {
+                runtimeError("%s is not an indexable type",
+                             typeofValue(PEEK(1)));
                 return INTERPRET_RUNTIME_ERR;
             }
 
-            double index = AS_NUMBER(POP());
-            ObjArray *arr = AS_ARRAY(POP());
+            switch (OBJ_TYPE(PEEK(1))) {
+            case OBJ_STRING: {
+                Value index_ = POP();
+                ObjString *str = AS_STRING(POP());
 
-            if (index != (double)((int)index)) {
-                runtimeError("can only use integers to index into arrays");
-                return INTERPRET_RUNTIME_ERR;
-            }
-            if (!isValidArrayIndex(arr, (int)index)) {
-                runtimeError("index out of bounds");
-                return INTERPRET_RUNTIME_ERR;
-            }
+                int index = isValidIndex(index_, str->length);
+                if (index == -1) {
+                    runtimeError("Can only use numbers to index strings");
+                    return INTERPRET_RUNTIME_ERR;
+                } else if (index == -2) {
+                    runtimeError("can only use integers to index into strings");
+                    return INTERPRET_RUNTIME_ERR;
+                } else if (index == -3) {
+                    runtimeError("index out of bounds");
+                    return INTERPRET_RUNTIME_ERR;
+                }
 
-            Value result = indexFromArray(arr, (int)index);
-            PUSH(result);
+                ObjString *result = copyString((char *)(str->chars + index), 1);
+                PUSH(OBJ_VAL(result));
+            } break;
+            case OBJ_ARRAY: {
+                Value index_ = POP();
+                ObjArray *arr = AS_ARRAY(POP());
+
+                int index = isValidIndex(index_, arr->elements.cnt);
+                if (index == -1) {
+                    runtimeError("Can only use numbers to index arrays");
+                    return INTERPRET_RUNTIME_ERR;
+                } else if (index == -2) {
+                    runtimeError("can only use integers to index into arrays");
+                    return INTERPRET_RUNTIME_ERR;
+                } else if (index == -3) {
+                    runtimeError("index out of bounds");
+                    return INTERPRET_RUNTIME_ERR;
+                }
+
+                PUSH(indexFromArray(arr, index));
+            } break;
+            case OBJ_MAP: {
+                Value key = POP();
+                if (!isHashable(key)) {
+                    runtimeError("%s is an unhashable type", typeofValue(key));
+                    return INTERPRET_RUNTIME_ERR;
+                }
+
+                ObjMap *map = AS_MAP(POP());
+                Value result = NIL_VAL;
+                tableGet(&map->table, key, &result);
+                PUSH(result);
+            } break;
+            default: break;
+            }
         } break;
         case OP_SET_INDEX: {
-            if (!IS_NUMBER(PEEK(1))) {
-                runtimeError("Can only use numbers to index arrays");
-                return INTERPRET_RUNTIME_ERR;
-            }
-            if (!IS_ARRAY(PEEK(2))) {
-                runtimeError("Can only index set into arrays");
+            if (!isIndexable(PEEK(2))) {
+                runtimeError("%s is not an indexable type",
+                             typeofValue(PEEK(1)));
                 return INTERPRET_RUNTIME_ERR;
             }
 
-            Value item = POP();
-            double index = AS_NUMBER(POP());
-            ObjArray *arr = AS_ARRAY(POP());
-
-            if (index != (double)((int)index)) {
-                runtimeError("can only use integers to index into arrays");
+            switch (OBJ_TYPE(PEEK(2))) {
+            case OBJ_STRING: {
+                runtimeError("Can not index setting on strings");
                 return INTERPRET_RUNTIME_ERR;
-            }
-            if (!isValidArrayIndex(arr, (int)index)) {
-                runtimeError("index out of bounds");
-                return INTERPRET_RUNTIME_ERR;
-            }
+            } break;
+            case OBJ_ARRAY: {
+                Value value = POP();
+                Value index_ = POP();
+                ObjArray *arr = AS_ARRAY(POP());
 
-            storeToArray(arr, (int)index, item);
-            PUSH(item);
+                int index = isValidIndex(index_, arr->elements.cnt);
+                if (index == -1) {
+                    runtimeError("Can only use numbers to index arrays");
+                    return INTERPRET_RUNTIME_ERR;
+                } else if (index == -2) {
+                    runtimeError("can only use integers to index into arrays");
+                    return INTERPRET_RUNTIME_ERR;
+                } else if (index == -3) {
+                    runtimeError("index out of bounds");
+                    return INTERPRET_RUNTIME_ERR;
+                }
+
+                storeToArray(arr, index, value);
+                PUSH(value);
+            } break;
+            case OBJ_MAP: {
+                Value value = POP();
+                Value key = POP();
+                if (!isHashable(key)) {
+                    runtimeError("%s is an unhashable type", typeofValue(key));
+                    return INTERPRET_RUNTIME_ERR;
+                }
+
+                ObjMap *map = AS_MAP(PEEK(0));
+                tableSet(&map->table, key, value);
+                (void)POP(); // pop the map
+                PUSH(value);
+            } break;
+            default: break;
+            }
         } break;
         case OP_GET_LOCAL: {
             uint8_t slot = READ_BYTE();
@@ -516,17 +574,13 @@ static InterpretResult run(void) {
         } break;
         case OP_CALL: {
             int argCnt = READ_BYTE();
-            if (!callValue(PEEK(argCnt), argCnt)) {
-                return INTERPRET_RUNTIME_ERR;
-            }
+            if (!callValue(PEEK(argCnt), argCnt)) return INTERPRET_RUNTIME_ERR;
             frame = &vm.frames[vm.frameCount - 1];
         } break;
         case OP_INVOKE: {
             Value method = READ_CONST();
             int argCnt = READ_BYTE();
-            if (!invoke(method, argCnt)) {
-                return INTERPRET_RUNTIME_ERR;
-            }
+            if (!invoke(method, argCnt)) return INTERPRET_RUNTIME_ERR;
             frame = &vm.frames[vm.frameCount - 1];
         } break;
         case OP_SUPER_INVOKE: {
@@ -569,10 +623,10 @@ static InterpretResult run(void) {
             PUSH(result);
             frame = &vm.frames[vm.frameCount - 1];
         } break;
-        case OP_ARRAY: {
-            ObjArray *arr = newArray();
+        case OP_BUILD_ARRAY: {
             int cnt = READ_BYTE();
 
+            ObjArray *arr = newArray();
             pushRoot(OBJ_VAL(arr));
             for (Value *i = vm.sp - cnt; i < vm.sp; i++) {
                 appendToArray(arr, *i);
@@ -581,6 +635,25 @@ static InterpretResult run(void) {
 
             vm.sp -= cnt;
             PUSH(OBJ_VAL(arr));
+        } break;
+        case OP_BUILD_MAP: {
+            int cnt = READ_BYTE() * 2;
+
+            ObjMap *map = newMap();
+            pushRoot(OBJ_VAL(map));
+            for (Value *i = vm.sp - cnt; i < vm.sp; i += 2) {
+                Value key = *i;
+                if (!isHashable(key)) {
+                    runtimeError("%s is an unhashable type", typeofValue(key));
+                    return INTERPRET_RUNTIME_ERR;
+                }
+                Value val = *(i + 1);
+                tableSet(&map->table, key, val);
+            }
+            popRoot();
+
+            vm.sp -= cnt;
+            PUSH(OBJ_VAL(map));
         } break;
         case OP_CLASS:   PUSH(OBJ_VAL(newClass(READ_STRING()))); break;
         case OP_INHERIT: {

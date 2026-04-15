@@ -7,7 +7,6 @@
 #include "vm.h"
 
 #ifdef DEBUG_LOG_GC
-#include "debug.h"
 #include <stdio.h>
 #endif
 
@@ -103,6 +102,7 @@ static void blackenObject(Obj *object) {
     } break;
     case OBJ_UPVALUE: markValue(((ObjUpvalue *)object)->closed); break;
     case OBJ_ARRAY:   markArray(&((ObjArray *)object)->elements); break;
+    case OBJ_MAP:     markTable(&((ObjMap *)object)->table); break;
     case OBJ_NATIVE:
     case OBJ_STRING:  break;
     }
@@ -142,6 +142,10 @@ static void freeObject(Obj *object) {
     case OBJ_ARRAY: {
         freeValueArray(&((ObjArray *)object)->elements);
         FREE(ObjArray, object);
+    } break;
+    case OBJ_MAP: {
+        freeTable(&((ObjMap *)object)->table);
+        FREE(ObjMap, object);
     } break;
     case OBJ_NATIVE:       FREE(ObjNative, object); break;
     case OBJ_UPVALUE:      FREE(ObjUpvalue, object); break;

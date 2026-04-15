@@ -518,7 +518,33 @@ static void array(bool canAssign) {
 
     consume(TOKEN_RIGHT_SQR, "Expect ']' after array literal");
 
-    emitByte(OP_ARRAY);
+    emitByte(OP_BUILD_ARRAY);
+    emitByte((uint8_t)cnt);
+}
+
+static void map(bool canAssign) {
+    (void)canAssign;
+
+    int cnt = 0;
+    if (!check(TOKEN_RIGHT_BRACE)) {
+        do {
+            // trailing comma
+            if (check(TOKEN_RIGHT_BRACE)) break;
+
+            parsePrecedence(PREC_OR); // key
+            consume(TOKEN_COLON, "Expect ':' after map key");
+            parsePrecedence(PREC_OR); // value
+
+            if (cnt == UINT8_COUNT) {
+                error("Cannot have more than 256 items in a map literal");
+            }
+            cnt++;
+        } while (match(TOKEN_COMMA));
+    }
+
+    consume(TOKEN_RIGHT_BRACE, "Expect '}' after map literal");
+
+    emitByte(OP_BUILD_MAP);
     emitByte((uint8_t)cnt);
 }
 
@@ -620,7 +646,7 @@ static void unary(bool canAssign) {
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
-    [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
+    [TOKEN_LEFT_BRACE] = {map, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_SQR] = {array, subscript, PREC_SUBSCRIPT},
     [TOKEN_RIGHT_SQR] = {NULL, NULL, PREC_NONE},
@@ -629,6 +655,7 @@ ParseRule rules[] = {
     [TOKEN_MINUS] = {unary, binary, PREC_TERM},
     [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},
+    [TOKEN_COLON] = {NULL, NULL, PREC_NONE},
     [TOKEN_SLASH] = {NULL, binary, PREC_FACTOR},
     [TOKEN_STAR] = {NULL, binary, PREC_FACTOR},
     [TOKEN_BANG] = {unary, NULL, PREC_NONE},

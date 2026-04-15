@@ -83,15 +83,21 @@ static inline uint32_t hashNumber(double value) {
 static uint32_t hashObject(Obj *object) {
     switch (object->type) {
     case OBJ_CLASS:    return ((ObjClass *)object)->name->hash;
+    case OBJ_STRING:   return ((ObjString *)object)->hash;
     case OBJ_FUNCTION: {
         ObjFn *fn = (ObjFn *)object;
         return hashNumber(fn->arity) ^ hashNumber(fn->chunk.cnt) ^
                fn->name->hash;
     }
-    case OBJ_STRING:       return ((ObjString *)object)->hash;
+    case OBJ_INSTANCE: {
+        ObjString *klassName = ((ObjInstance *)object)->klass->name;
+        uint64_t ptr = (uint64_t)(uintptr_t)object;
+        return klassName->hash ^ hashBits(ptr);
+    }
     case OBJ_BOUND_METHOD:
+    case OBJ_ARRAY:
+    case OBJ_MAP:
     case OBJ_CLOSURE:
-    case OBJ_INSTANCE:
     case OBJ_NATIVE:
     case OBJ_UPVALUE:
     default:               printf("unreachable"); return 0;
@@ -107,9 +113,36 @@ uint32_t hashValue(Value value) {
     case VAL_BOOL:   return AS_BOOL(value) ? 3 : 5;
     case VAL_NIL:    return 7;
     case VAL_EMPTY:  return 0;
-    case VAL_NUMBER: return hashDouble(AS_NUMBER(value));
+    case VAL_NUMBER: return hashNumber(AS_NUMBER(value));
     case VAL_OBJ:    return hashObject(AS_OBJ(value));
     default:         printf("unreachable"); return 0;
+    }
+#endif /* ifdef NAN_BOXING */
+}
+
+const char *typeofValue(Value value) {
+#ifdef NAN_BOXING
+    if (IS_BOOL(value)) {
+        return "BOOL";
+    } else if (IS_NIL(value)) {
+        return "NIL";
+    } else if (IS_NUMBER(value)) {
+        return "NUMBER";
+    } else if (IS_EMPTY(value)) {
+        return "EMPTY";
+    } else if (IS_OBJ(value)) {
+        return ObjTypeString(OBJ_TYPE(value));
+    }
+    printf("unreachable");
+    return "UNKNOWN";
+#else
+    switch (value.type) {
+    case VAL_BOOL:   return "BOOL";
+    case VAL_NIL:    return "NIL";
+    case VAL_EMPTY:  return "EMPTY";
+    case VAL_NUMBER: return "NUMBER";
+    case VAL_OBJ:    return ObjTypeString(OBJ_TYPE(value));
+    default:         printf("unreachable"); return "UNKNOWN";
     }
 #endif /* ifdef NAN_BOXING */
 }

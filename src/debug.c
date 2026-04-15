@@ -112,7 +112,8 @@ int disassembleInst(Chunk *chunk, int offset) {
     }
     case OP_CLOSE_UPVALUE: return simpleInst("OP_CLOSE_UPVALUE", offset);
     case OP_RETURN:        return simpleInst("OP_RETURN", offset);
-    case OP_ARRAY:         return byteInst("OP_ARRAY", chunk, offset);
+    case OP_BUILD_ARRAY:   return byteInst("OP_BUILD_ARRAY", chunk, offset);
+    case OP_BUILD_MAP:     return byteInst("OP_BUILD_MAP", chunk, offset);
     case OP_CLASS:         return constantInst("OP_CLASS", chunk, offset);
     case OP_INHERIT:       return simpleInst("OP_INHERIT", offset);
     case OP_METHOD:        return constantInst("OP_METHOD", chunk, offset);
