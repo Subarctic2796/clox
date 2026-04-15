@@ -1,6 +1,7 @@
-#include "lexer.h"
 #include <stdbool.h>
 #include <string.h>
+
+#include "lexer.h"
 
 typedef struct {
   const char *start;
@@ -205,6 +206,10 @@ Token scanToken(void) {
     return makeToken(TOKEN_LEFT_BRACE);
   case '}':
     return makeToken(TOKEN_RIGHT_BRACE);
+  case '[':
+    return makeToken(TOKEN_LEFT_SQR);
+  case ']':
+    return makeToken(TOKEN_RIGHT_SQR);
   case ';':
     return makeToken(TOKEN_SEMICOLON);
   case ',':

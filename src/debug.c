@@ -65,6 +65,10 @@ int disassembleInst(Chunk *chunk, int offset) {
     return simpleInst("OP_NIL", offset);
   case OP_FALSE:
     return simpleInst("OP_FALSE", offset);
+  case OP_GET_INDEX:
+    return simpleInst("OP_GET_INDEX", offset);
+  case OP_SET_INDEX:
+    return simpleInst("OP_SET_INDEX", offset);
   case OP_GET_LOCAL:
     return byteInst("OP_GET_LOCAL", chunk, offset);
   case OP_SET_LOCAL:
@@ -141,6 +145,8 @@ int disassembleInst(Chunk *chunk, int offset) {
     return simpleInst("OP_CLOSE_UPVALUE", offset);
   case OP_RETURN:
     return simpleInst("OP_RETURN", offset);
+  case OP_ARRAY:
+    return byteInst("OP_ARRAY", chunk, offset);
   case OP_CLASS:
     return constantInst("OP_CLASS", chunk, offset);
   case OP_INHERIT:

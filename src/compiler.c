@@ -29,6 +29,7 @@ typedef enum {
   PREC_FACTOR,     // * /
   PREC_UNARY,      // ! -
   PREC_CALL,       // . ()
+  PREC_SUBSCRIPT,  // [expr]
   PREC_PRIMARY
 } Precedence;
 
@@ -255,8 +256,7 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
   }
 
   Local *local = &current->locals[current->localCount++];
-  local->depth = 0;
-  local->exitOP = OP_POP;
+  *local = (Local){{0}, 0, OP_POP};
   if (type != TYPE_FUNCTION) {
     local->name.start = "this";
     local->name.len = 4;
@@ -557,6 +557,44 @@ static void string(bool canAssign) {
   emitConstant(OBJ_VAL(copyString(prv.start + 1, prv.len - 2)));
 }
 
+static void list(bool canAssign) {
+  (void)canAssign;
+
+  int cnt = 0;
+  if (!check(TOKEN_RIGHT_SQR)) {
+    do {
+      if (check(TOKEN_RIGHT_SQR)) {
+        // trailing comma
+        break;
+      }
+
+      parsePrecedence(PREC_OR);
+
+      if (cnt == UINT8_COUNT) {
+        error("Cannot have more than 256 items in an array literal");
+      }
+      cnt++;
+    } while (match(TOKEN_COMMA));
+  }
+
+  consume(TOKEN_RIGHT_SQR, "Expect ']' after array literal");
+
+  emitByte(OP_ARRAY);
+  emitByte((uint8_t)cnt);
+}
+
+static void subscript(bool canAssign) {
+  parsePrecedence(PREC_OR);
+  consume(TOKEN_RIGHT_SQR, "Expect ']' after index");
+
+  if (canAssign && match(TOKEN_EQUAL)) {
+    expression();
+    emitByte(OP_SET_INDEX);
+  } else {
+    emitByte(OP_GET_INDEX);
+  }
+}
+
 static void namedVariable(Token name, bool canAssign) {
   uint8_t getOp, setOp;
   int argIdx = resolveLocal(current, &name);
@@ -650,6 +688,8 @@ ParseRule rules[] = {
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LEFT_BRACE] = {NULL, NULL, PREC_NONE},
     [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
+    [TOKEN_LEFT_SQR] = {list, subscript, PREC_SUBSCRIPT},
+    [TOKEN_RIGHT_SQR] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
     [TOKEN_DOT] = {NULL, dot, PREC_CALL},
     [TOKEN_MINUS] = {unary, binary, PREC_TERM},
@@ -723,7 +763,7 @@ static void block(void) {
 }
 
 static void function(FunctionType type) {
-  Compiler compiler;
+  Compiler compiler = {0};
   initCompiler(&compiler, type);
   beginScope();
 

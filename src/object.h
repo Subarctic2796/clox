@@ -130,6 +130,11 @@ ObjUpvalue *newUpvalue(Value *slot);
 ObjString *takeString(char *chars, int length);
 ObjString *copyString(const char *chars, int length);
 void printObject(Value value);
+void appendToArray(ObjArray *arr, Value value);
+void storeToArray(ObjArray *arr, int index, Value value);
+Value indexFromArray(ObjArray *arr, int index);
+void deleteFromArray(ObjArray *arr, int index);
+bool isValidArrayIndex(ObjArray *arr, int index);
 
 static inline bool isObjType(Value value, ObjType type) {
   return IS_OBJ(value) && AS_OBJ(value)->type == type;

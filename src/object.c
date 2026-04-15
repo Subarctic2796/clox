@@ -132,6 +132,29 @@ ObjArray *newArray() {
   return arr;
 }
 
+void appendToArray(ObjArray *arr, Value value) {
+  writeValueArray(&arr->elements, value);
+}
+
+void storeToArray(ObjArray *arr, int index, Value value) {
+  arr->elements.values[index] = value;
+}
+
+Value indexFromArray(ObjArray *arr, int index) {
+  return arr->elements.values[index];
+}
+
+void deleteFromArray(ObjArray *arr, int index) {
+  for (int i = index; i < arr->elements.cnt - 1; i++) {
+    arr->elements.values[i] = arr->elements.values[i + 1];
+  }
+  arr->elements.values[arr->elements.cnt--] = NIL_VAL;
+}
+
+bool isValidArrayIndex(ObjArray *arr, int index) {
+  return index >= 0 && index < arr->elements.cnt - 1;
+}
+
 static inline void printFunction(ObjFn *func) {
   if (func->name == NULL) {
     printf("<script>");

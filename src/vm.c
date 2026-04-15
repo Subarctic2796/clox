@@ -3,6 +3,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "chunk.h"
 #include "common.h"
 #include "compiler.h"
 #include "value.h"
@@ -21,6 +22,38 @@ static Value clockNative(int argc, Value *args) {
   (void)argc;
   (void)args;
   return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
+}
+
+static Value appendNative(int argc, Value *args) {
+  // append a value to the array
+  if ((argc != 2) || !IS_ARRAY(args[0])) {
+    // handle error
+  }
+
+  ObjArray *arr = AS_ARRAY(args[0]);
+  Value item = args[1];
+  appendToArray(arr, item);
+  return NIL_VAL;
+}
+
+static Value deleteNative(int argc, Value *args) {
+  // delete an item from the array at index
+  if ((argc != 2) || !IS_ARRAY(args[0]) || !IS_NUMBER(args[1])) {
+    // TODO: handle error
+  }
+
+  ObjArray *arr = AS_ARRAY(args[0]);
+  double index = AS_NUMBER(args[1]);
+
+  if (index != (double)((int)index)) {
+    // TODO: handle error
+  }
+  if (!isValidArrayIndex(arr, (int)index)) {
+    // TODO: handle error
+  }
+
+  deleteFromArray(arr, (int)index);
+  return NIL_VAL;
 }
 
 static void resetStack(void) {
@@ -83,6 +116,8 @@ void initVM(void) {
   vm.initString = copyString("init", 4);
 
   defineNative("clock", clockNative);
+  defineNative("append", appendNative);
+  defineNative("delete", deleteNative);
 }
 
 void freeVM(void) {
@@ -313,13 +348,64 @@ static InterpretResult run(void) {
     case OP_POP:
       (void)POP();
       break;
-    case OP_SET_LOCAL: {
-      uint8_t slot = READ_BYTE();
-      frame->slots[slot] = PEEK(0);
+    case OP_GET_INDEX: {
+      if (!IS_NUMBER(PEEK(0))) {
+        runtimeError("Can only use numbers to index arrays");
+        return INTERPRET_RUNTIME_ERR;
+      }
+      if (!IS_ARRAY(PEEK(1))) {
+        runtimeError("Can only index into arrays");
+        return INTERPRET_RUNTIME_ERR;
+      }
+
+      double index = AS_NUMBER(POP());
+      ObjArray *arr = AS_ARRAY(POP());
+
+      if (index != (double)((int)index)) {
+        runtimeError("can only use integers to index into arrays");
+        return INTERPRET_RUNTIME_ERR;
+      }
+      if (!isValidArrayIndex(arr, (int)index)) {
+        runtimeError("index out of bounds");
+        return INTERPRET_RUNTIME_ERR;
+      }
+
+      Value result = indexFromArray(arr, (int)index);
+      PUSH(result);
+    } break;
+    case OP_SET_INDEX: {
+      if (!IS_NUMBER(PEEK(1))) {
+        runtimeError("Can only use numbers to index arrays");
+        return INTERPRET_RUNTIME_ERR;
+      }
+      if (!IS_ARRAY(PEEK(2))) {
+        runtimeError("Can only index set into arrays");
+        return INTERPRET_RUNTIME_ERR;
+      }
+
+      Value item = POP();
+      double index = AS_NUMBER(POP());
+      ObjArray *arr = AS_ARRAY(POP());
+
+      if (index != (double)((int)index)) {
+        runtimeError("can only use integers to index into arrays");
+        return INTERPRET_RUNTIME_ERR;
+      }
+      if (!isValidArrayIndex(arr, (int)index)) {
+        runtimeError("index out of bounds");
+        return INTERPRET_RUNTIME_ERR;
+      }
+
+      storeToArray(arr, (int)index, item);
+      PUSH(item);
     } break;
     case OP_GET_LOCAL: {
       uint8_t slot = READ_BYTE();
       PUSH(frame->slots[slot]);
+    } break;
+    case OP_SET_LOCAL: {
+      uint8_t slot = READ_BYTE();
+      frame->slots[slot] = PEEK(0);
     } break;
     case OP_GET_GLOBAL: {
       Value name = READ_CONST();
@@ -509,6 +595,19 @@ static InterpretResult run(void) {
       vm.sp = frame->slots;
       PUSH(result);
       frame = &vm.frames[vm.frameCount - 1];
+    } break;
+    case OP_ARRAY: {
+      ObjArray *arr = newArray();
+      int cnt = READ_BYTE();
+
+      pushRoot(OBJ_VAL(arr));
+      for (Value *i = vm.sp - cnt; i < vm.sp; i++) {
+        appendToArray(arr, *i);
+      }
+      popRoot();
+
+      vm.sp -= cnt;
+      PUSH(OBJ_VAL(arr));
     } break;
     case OP_CLASS:
       PUSH(OBJ_VAL(newClass(READ_STRING())));
