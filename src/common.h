@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#define ARRAY_LEN(a) (sizeof((a)) / sizeof((a)[0]))
+
 #define NAN_BOXING
 
 #define LOX_DEBUG

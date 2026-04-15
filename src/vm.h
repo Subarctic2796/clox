@@ -7,43 +7,43 @@
 #include "table.h"
 #include "value.h"
 
-#define FRAMES_MAX 64
-#define STACK_MAX (FRAMES_MAX * UINT8_COUNT)
+#define FRAMES_MAX     64
+#define STACK_MAX      (FRAMES_MAX * UINT8_COUNT)
 #define TEMP_ROOTS_MAX 8
 
 typedef struct {
-  ObjClosure *closure;
-  uint8_t *ip;
-  Value *slots;
+    ObjClosure *closure;
+    uint8_t *ip;
+    Value *slots;
 } CallFrame;
 
 typedef struct {
-  CallFrame frames[FRAMES_MAX];
-  int frameCount;
+    CallFrame frames[FRAMES_MAX];
+    int frameCount;
 
-  Value stack[STACK_MAX];
-  Value *sp;
-  Table globals;
-  Table strings;
-  ObjString *initString;
-  ObjUpvalue *openUpvalues;
+    Value stack[STACK_MAX];
+    Value *sp;
+    Table globals;
+    Table strings;
+    ObjString *initString;
+    ObjUpvalue *openUpvalues;
 
-  size_t bytesAllocated;
-  size_t nextGC;
-  Obj *objects;
+    size_t bytesAllocated;
+    size_t nextGC;
+    Obj *objects;
 
-  int grayCnt;
-  int grayCap;
-  Obj **grayStack;
+    int grayCnt;
+    int grayCap;
+    Obj **grayStack;
 
-  Value tempRoots[TEMP_ROOTS_MAX];
-  int tempCnt;
+    Value tempRoots[TEMP_ROOTS_MAX];
+    int tempCnt;
 } VM;
 
 typedef enum {
-  INTERPRET_OK,
-  INTERPRET_COMPILE_ERR,
-  INTERPRET_RUNTIME_ERR,
+    INTERPRET_OK,
+    INTERPRET_COMPILE_ERR,
+    INTERPRET_RUNTIME_ERR,
 } InterpretResult;
 
 extern VM vm;

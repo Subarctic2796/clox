@@ -1,0 +1,9 @@
+IndentWidth: '4'
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortCaseExpressionOnASingleLine: true
+AllowShortIfStatementsOnASingleLine: WithoutElse
+
+AlignConsecutiveMacros:
+  Enabled: true
+AlignConsecutiveShortCaseStatements:
+  Enabled: true

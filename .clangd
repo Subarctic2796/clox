@@ -1,0 +1,5 @@
+# Tweak the parse settings
+CompileFlags:
+  # treat all files as C++, enable more warnings
+  Add: [-Wextra, -Wall, -Wswitch-enum]
+  # Remove: [-Wunused-function, -Wc99-designator]

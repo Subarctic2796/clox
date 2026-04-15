@@ -5,14 +5,14 @@
 #include "value.h"
 
 typedef struct {
-  Value key;
-  Value value;
+    Value key;
+    Value value;
 } Entry;
 
 typedef struct {
-  int cnt;
-  int cap;
-  Entry *entries;
+    int cnt;
+    int cap;
+    Entry *entries;
 } Table;
 
 void initTable(Table *table);

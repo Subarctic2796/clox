@@ -9,114 +9,114 @@
 #define OBJ_TYPE(value) (AS_OBJ(value)->type)
 
 #define IS_BOUND_METHOD(value) isObjType(value, OBJ_BOUND_METHOD)
-#define IS_CLASS(value) isObjType(value, OBJ_CLASS)
-#define IS_CLOSURE(value) isObjType(value, OBJ_CLOSURE)
-#define IS_FUNCTION(value) isObjType(value, OBJ_FUNCTION)
-#define IS_INSTANCE(value) isObjType(value, OBJ_INSTANCE)
-#define IS_NATIVE(value) isObjType(value, OBJ_NATIVE)
-#define IS_STRING(value) isObjType(value, OBJ_STRING)
-#define IS_ARRAY(value) isObjType(value, OBJ_ARRAY)
+#define IS_CLASS(value)        isObjType(value, OBJ_CLASS)
+#define IS_CLOSURE(value)      isObjType(value, OBJ_CLOSURE)
+#define IS_FUNCTION(value)     isObjType(value, OBJ_FUNCTION)
+#define IS_INSTANCE(value)     isObjType(value, OBJ_INSTANCE)
+#define IS_NATIVE(value)       isObjType(value, OBJ_NATIVE)
+#define IS_STRING(value)       isObjType(value, OBJ_STRING)
+#define IS_ARRAY(value)        isObjType(value, OBJ_ARRAY)
 
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod *)AS_OBJ(value))
-#define AS_CLASS(value) ((ObjClass *)AS_OBJ(value))
-#define AS_CLOSURE(value) ((ObjClosure *)AS_OBJ(value))
-#define AS_FUNCTION(value) ((ObjFn *)AS_OBJ(value))
-#define AS_INSTANCE(value) ((ObjInstance *)AS_OBJ(value))
-#define AS_NATIVE(value) (((ObjNative *)AS_OBJ(value))->function)
-#define AS_ARRAY(value) ((ObjArray *)AS_OBJ(value))
-#define AS_STRING(value) ((ObjString *)AS_OBJ(value))
-#define AS_CSTRING(value) (((ObjString *)AS_OBJ(value))->chars)
+#define AS_CLASS(value)        ((ObjClass *)AS_OBJ(value))
+#define AS_CLOSURE(value)      ((ObjClosure *)AS_OBJ(value))
+#define AS_FUNCTION(value)     ((ObjFn *)AS_OBJ(value))
+#define AS_INSTANCE(value)     ((ObjInstance *)AS_OBJ(value))
+#define AS_NATIVE(value)       (((ObjNative *)AS_OBJ(value))->function)
+#define AS_ARRAY(value)        ((ObjArray *)AS_OBJ(value))
+#define AS_STRING(value)       ((ObjString *)AS_OBJ(value))
+#define AS_CSTRING(value)      (((ObjString *)AS_OBJ(value))->chars)
 
 typedef enum {
-  OBJ_BOUND_METHOD,
-  OBJ_CLASS,
-  OBJ_CLOSURE,
-  OBJ_FUNCTION,
-  OBJ_INSTANCE,
-  OBJ_NATIVE,
-  OBJ_STRING,
-  OBJ_UPVALUE,
-  OBJ_ARRAY,
+    OBJ_BOUND_METHOD,
+    OBJ_CLASS,
+    OBJ_CLOSURE,
+    OBJ_FUNCTION,
+    OBJ_INSTANCE,
+    OBJ_NATIVE,
+    OBJ_STRING,
+    OBJ_UPVALUE,
+    OBJ_ARRAY,
 } ObjType;
 
 static inline const char *ObjTypeString(ObjType t) {
-  static const char *strings[] = {
-      [OBJ_BOUND_METHOD] = "OBJ_BOUND_METHOD",
-      [OBJ_CLASS] = "OBJ_CLASS",
-      [OBJ_CLOSURE] = "OBJ_CLOSURE",
-      [OBJ_FUNCTION] = "OBJ_FUNCTION",
-      [OBJ_INSTANCE] = "OBJ_INSTANCE",
-      [OBJ_NATIVE] = "OBJ_NATIVE",
-      [OBJ_STRING] = "OBJ_STRING",
-      [OBJ_UPVALUE] = "OBJ_UPVALUE",
-      [OBJ_ARRAY] = "OBJ_ARRAY",
-  };
-  return strings[t];
+    static const char *strings[] = {
+        [OBJ_BOUND_METHOD] = "OBJ_BOUND_METHOD",
+        [OBJ_CLASS] = "OBJ_CLASS",
+        [OBJ_CLOSURE] = "OBJ_CLOSURE",
+        [OBJ_FUNCTION] = "OBJ_FUNCTION",
+        [OBJ_INSTANCE] = "OBJ_INSTANCE",
+        [OBJ_NATIVE] = "OBJ_NATIVE",
+        [OBJ_STRING] = "OBJ_STRING",
+        [OBJ_UPVALUE] = "OBJ_UPVALUE",
+        [OBJ_ARRAY] = "OBJ_ARRAY",
+    };
+    return strings[t];
 }
 
 struct Obj {
-  ObjType type;
-  bool isMarked;
-  struct Obj *next;
+    ObjType type;
+    bool isMarked;
+    struct Obj *next;
 };
 
 typedef struct {
-  Obj obj;
-  int arity;
-  int upvalueCnt;
-  Chunk chunk;
-  ObjString *name;
+    Obj obj;
+    int arity;
+    int upvalueCnt;
+    Chunk chunk;
+    ObjString *name;
 } ObjFn;
 
 typedef Value (*NativeFn)(int argc, Value *args);
 
 typedef struct {
-  Obj obj;
-  NativeFn function;
+    Obj obj;
+    NativeFn function;
 } ObjNative;
 
 struct ObjString {
-  Obj obj;
-  int length;
-  uint32_t hash;
-  char *chars;
+    Obj obj;
+    int length;
+    uint32_t hash;
+    char *chars;
 };
 
 typedef struct ObjUpvalue {
-  Obj obj;
-  Value *location;
-  Value closed;
-  struct ObjUpvalue *next;
+    Obj obj;
+    Value *location;
+    Value closed;
+    struct ObjUpvalue *next;
 } ObjUpvalue;
 
 typedef struct {
-  Obj obj;
-  ObjFn *fn;
-  ObjUpvalue **upvalues;
-  int upvalueCnt;
+    Obj obj;
+    ObjFn *fn;
+    ObjUpvalue **upvalues;
+    int upvalueCnt;
 } ObjClosure;
 
 typedef struct {
-  Obj obj;
-  ObjString *name;
-  Table methods;
+    Obj obj;
+    ObjString *name;
+    Table methods;
 } ObjClass;
 
 typedef struct {
-  Obj obj;
-  ObjClass *klass;
-  Table fields;
+    Obj obj;
+    ObjClass *klass;
+    Table fields;
 } ObjInstance;
 
 typedef struct {
-  Obj obj;
-  Value receiver;
-  ObjClosure *method;
+    Obj obj;
+    Value receiver;
+    ObjClosure *method;
 } ObjBoundMethod;
 
 typedef struct {
-  Obj obj;
-  ValueArray elements;
+    Obj obj;
+    ValueArray elements;
 } ObjArray;
 
 ObjArray *newArray();
@@ -137,7 +137,7 @@ void deleteFromArray(ObjArray *arr, int index);
 bool isValidArrayIndex(ObjArray *arr, int index);
 
 static inline bool isObjType(Value value, ObjType type) {
-  return IS_OBJ(value) && AS_OBJ(value)->type == type;
+    return IS_OBJ(value) && AS_OBJ(value)->type == type;
 }
 
 #endif // INCLUDE_CLOX_OBJECT_H_
