@@ -47,7 +47,7 @@ static Value appendNative(int argc, Value *args) {
 // delete an item from the array or map at index
 static Value deleteNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(2);
-    if (!IS_ARRAY(args[0]) || !IS_MAP(args[0])) {
+    if (!(IS_ARRAY(args[0]) || IS_MAP(args[0]))) {
         return OBJ_VAL(
             newError(false, "Can only use 'delete' on maps and arrays, got %s",
                      typeofValue(args[0])));
