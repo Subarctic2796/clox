@@ -1,6 +1,8 @@
 #ifndef INCLUDE_CLOX_OBJECT_H_
 #define INCLUDE_CLOX_OBJECT_H_
 
+#include <math.h>
+
 #include "chunk.h"
 #include "common.h"
 #include "table.h"
@@ -15,6 +17,7 @@
 #define IS_INSTANCE(value)     isObjType(value, OBJ_INSTANCE)
 #define IS_NATIVE(value)       isObjType(value, OBJ_NATIVE)
 #define IS_STRING(value)       isObjType(value, OBJ_STRING)
+#define IS_ERROR(value)        isObjType(value, OBJ_ERROR)
 #define IS_ARRAY(value)        isObjType(value, OBJ_ARRAY)
 #define IS_MAP(value)          isObjType(value, OBJ_MAP)
 
@@ -28,6 +31,8 @@
 #define AS_MAP(value)          ((ObjMap *)AS_OBJ(value))
 #define AS_STRING(value)       ((ObjString *)AS_OBJ(value))
 #define AS_CSTRING(value)      (((ObjString *)AS_OBJ(value))->chars)
+#define AS_ERROR(value)        ((ObjError *)AS_OBJ(value))
+#define AS_ERROR_MSG(value)    (((ObjError *)AS_OBJ(value))->msg->chars)
 
 typedef enum {
     OBJ_BOUND_METHOD,
@@ -37,6 +42,7 @@ typedef enum {
     OBJ_INSTANCE,
     OBJ_NATIVE,
     OBJ_STRING,
+    OBJ_ERROR,
     OBJ_UPVALUE,
     OBJ_ARRAY,
     OBJ_MAP,
@@ -51,6 +57,7 @@ static inline const char *ObjTypeString(ObjType t) {
         [OBJ_INSTANCE] = "OBJ_INSTANCE",
         [OBJ_NATIVE] = "OBJ_NATIVE",
         [OBJ_STRING] = "OBJ_STRING",
+        [OBJ_ERROR] = "OBJ_ERROR",
         [OBJ_UPVALUE] = "OBJ_UPVALUE",
         [OBJ_ARRAY] = "OBJ_ARRAY",
         [OBJ_MAP] = "OBJ_MAP",
@@ -86,6 +93,12 @@ struct ObjString {
     char *chars;
 };
 
+typedef struct {
+    Obj obj;
+    ObjString *msg;
+    bool recoverable;
+} ObjError;
+
 typedef struct ObjUpvalue {
     Obj obj;
     Value *location;
@@ -120,12 +133,12 @@ typedef struct {
 
 typedef struct {
     Obj obj;
-    ValueArray elements;
+    ValueArray items;
 } ObjArray;
 
 typedef struct {
     Obj obj;
-    Table table;
+    Table items;
 } ObjMap;
 
 ObjArray *newArray();
@@ -137,9 +150,15 @@ ObjFn *newFunction(void);
 ObjInstance *newInstance(ObjClass *klass);
 ObjNative *newNative(NativeFn function);
 ObjUpvalue *newUpvalue(Value *slot);
+ObjError *newError(bool recoverable, const char *fmt, ...);
+
+// for when you have dynamically allocated strings
 ObjString *takeString(char *chars, int length);
+// for string literals
 ObjString *copyString(const char *chars, int length);
+
 void printObject(Value value);
+
 void appendToArray(ObjArray *arr, Value value);
 void storeToArray(ObjArray *arr, int index, Value value);
 Value indexFromArray(ObjArray *arr, int index);
@@ -149,7 +168,13 @@ void deleteFromArray(ObjArray *arr, int index);
 // returns -2 if value is not an integer
 // returns -3 if index is out of bounds
 // returns a +ve num on success
-int isValidIndex(Value value, int len);
+static inline int isValidIndex(Value value, int len) {
+    if (!IS_NUMBER(value)) return -1;
+    double index = AS_NUMBER(value);
+    if (trunc(index) != index) return -2;
+    if ((int)index >= 0 && (int)index < len) return (int)index;
+    return -3;
+}
 
 static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;
@@ -161,7 +186,7 @@ static inline bool isIndexable(Value value) {
 
 static inline bool isHashable(Value value) {
     return IS_NUMBER(value) || IS_BOOL(value) || IS_NIL(value) ||
-           IS_STRING(value) || IS_INSTANCE(value);
+           IS_STRING(value) || IS_ERROR(value) || IS_INSTANCE(value);
 }
 
 #endif // INCLUDE_CLOX_OBJECT_H_

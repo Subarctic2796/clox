@@ -19,16 +19,23 @@
 
 VM vm = {0};
 
+#define CHECK_ARITY_NATIVE(arity)                                              \
+    if (argc != arity) {                                                       \
+        return OBJ_VAL(newError(                                               \
+            false, "Expected " #arity " arguments but got %d", argc));         \
+    }
+
 static Value clockNative(int argc, Value *args) {
     (void)argc;
     (void)args;
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
+// append a value to the array
 static Value appendNative(int argc, Value *args) {
-    // append a value to the array
-    if ((argc != 2) || !IS_ARRAY(args[0])) {
-        // TODO: handle error
+    CHECK_ARITY_NATIVE(2);
+    if (!IS_ARRAY(args[0])) {
+        return OBJ_VAL(newError(false, "Can only append to arrays"));
     }
 
     ObjArray *arr = AS_ARRAY(args[0]);
@@ -37,24 +44,84 @@ static Value appendNative(int argc, Value *args) {
     return NIL_VAL;
 }
 
+// delete an item from the array or map at index
 static Value deleteNative(int argc, Value *args) {
-    // delete an item from the array at index
-    if ((argc != 2) || !IS_ARRAY(args[0]) || !IS_NUMBER(args[1])) {
-        // TODO: handle error
+    CHECK_ARITY_NATIVE(2);
+    if (!IS_ARRAY(args[0]) || !IS_MAP(args[0])) {
+        return OBJ_VAL(
+            newError(false, "Can only use 'delete' on maps and arrays, got %s",
+                     typeofValue(args[0])));
     }
 
-    ObjArray *arr = AS_ARRAY(args[0]);
-    int index = isValidIndex(args[1], arr->elements.cnt);
+    if (IS_ARRAY(args[0])) {
+        ObjArray *arr = AS_ARRAY(args[0]);
+        int index = isValidIndex(args[1], arr->items.cnt);
 
-    if (index == -2) {
-        // TODO: handle error
-    }
-    if (index == -3) {
-        // TODO: handle error
-    }
+        if (index == -1) {
+            return OBJ_VAL(
+                newError(false, "Can only use numbers to index arrays"));
+        } else if (index == -2) {
+            return OBJ_VAL(
+                newError(false, "can only use integers to index into arrays"));
+        } else if (index == -3) {
+            return OBJ_VAL(newError(false, "index out of bounds"));
+        }
 
-    deleteFromArray(arr, index);
+        deleteFromArray(arr, index);
+        return NIL_VAL;
+    } else if (IS_MAP(args[0])) {
+        ObjMap *map = AS_MAP(args[0]);
+        Value key = args[1];
+        if (!isHashable(key)) {
+            return OBJ_VAL(
+                newError(false, "%s is an unhashable type", typeofValue(key)));
+        }
+
+        tableDelete(&map->items, key);
+        return NIL_VAL;
+    }
     return NIL_VAL;
+}
+
+// returns length of a string, array or map
+static Value lenNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+
+    if (IS_STRING(args[0])) {
+        int len = AS_STRING(args[0])->length;
+        return NUMBER_VAL(len);
+    } else if (IS_ARRAY(args[0])) {
+        int len = AS_ARRAY(args[0])->items.cnt;
+        return NUMBER_VAL(len);
+    } else if (IS_MAP(args[0])) {
+        int len = AS_MAP(args[0])->items.cnt;
+        return NUMBER_VAL(len);
+    }
+    return OBJ_VAL(newError(
+        false, "Can only take the length of strings, arrays, and maps"));
+}
+
+static Value errorNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+    return OBJ_VAL(newError(AS_BOOL(args[0]), "this is a recoverable error"));
+}
+
+static Value typeofNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+    Value v = args[0];
+    if (IS_CLASS(v)) {
+        return OBJ_VAL(AS_CLASS(v)->name);
+    } else if (IS_INSTANCE(v)) {
+        ObjString *name = AS_INSTANCE(v)->klass->name;
+
+        int len = name->length + 9;
+        char *buf = ALLOCATE(char, len + 1);
+        snprintf(buf, len + 1, "%s instance", name->chars);
+
+        return OBJ_VAL(takeString(buf, len));
+    }
+    const char *str = typeofValue(args[0]);
+    return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
 }
 
 static void resetStack(void) {
@@ -119,6 +186,9 @@ void initVM(void) {
     defineNative("clock", clockNative);
     defineNative("append", appendNative);
     defineNative("delete", deleteNative);
+    defineNative("len", lenNative);
+    defineNative("error", errorNative);
+    defineNative("typeof", typeofNative);
 }
 
 void freeVM(void) {
@@ -176,6 +246,10 @@ static bool callValue(Value callee, int argCnt) {
         case OBJ_NATIVE:  {
             NativeFn native = AS_NATIVE(callee);
             Value result = native(argCnt, vm.sp - argCnt);
+            if (IS_ERROR(result) && !AS_ERROR(result)->recoverable) {
+                runtimeError(AS_ERROR_MSG(result));
+                return false;
+            }
             vm.sp -= argCnt + 1;
             push(result);
             return true;
@@ -369,7 +443,7 @@ static InterpretResult run(void) {
                 Value index_ = POP();
                 ObjArray *arr = AS_ARRAY(POP());
 
-                int index = isValidIndex(index_, arr->elements.cnt);
+                int index = isValidIndex(index_, arr->items.cnt);
                 if (index == -1) {
                     runtimeError("Can only use numbers to index arrays");
                     return INTERPRET_RUNTIME_ERR;
@@ -392,7 +466,7 @@ static InterpretResult run(void) {
 
                 ObjMap *map = AS_MAP(POP());
                 Value result = NIL_VAL;
-                tableGet(&map->table, key, &result);
+                tableGet(&map->items, key, &result);
                 PUSH(result);
             } break;
             default: break;
@@ -415,7 +489,7 @@ static InterpretResult run(void) {
                 Value index_ = POP();
                 ObjArray *arr = AS_ARRAY(POP());
 
-                int index = isValidIndex(index_, arr->elements.cnt);
+                int index = isValidIndex(index_, arr->items.cnt);
                 if (index == -1) {
                     runtimeError("Can only use numbers to index arrays");
                     return INTERPRET_RUNTIME_ERR;
@@ -439,7 +513,7 @@ static InterpretResult run(void) {
                 }
 
                 ObjMap *map = AS_MAP(PEEK(0));
-                tableSet(&map->table, key, value);
+                tableSet(&map->items, key, value);
                 (void)POP(); // pop the map
                 PUSH(value);
             } break;
@@ -648,7 +722,7 @@ static InterpretResult run(void) {
                     return INTERPRET_RUNTIME_ERR;
                 }
                 Value val = *(i + 1);
-                tableSet(&map->table, key, val);
+                tableSet(&map->items, key, val);
             }
             popRoot();
 

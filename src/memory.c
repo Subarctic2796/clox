@@ -100,9 +100,13 @@ static void blackenObject(Obj *object) {
         markObject((Obj *)instance->klass);
         markTable(&instance->fields);
     } break;
+    case OBJ_ERROR: {
+        ObjString *msg = ((ObjError *)object)->msg;
+        markObject((Obj *)msg);
+    } break;
     case OBJ_UPVALUE: markValue(((ObjUpvalue *)object)->closed); break;
-    case OBJ_ARRAY:   markArray(&((ObjArray *)object)->elements); break;
-    case OBJ_MAP:     markTable(&((ObjMap *)object)->table); break;
+    case OBJ_ARRAY:   markArray(&((ObjArray *)object)->items); break;
+    case OBJ_MAP:     markTable(&((ObjMap *)object)->items); break;
     case OBJ_NATIVE:
     case OBJ_STRING:  break;
     }
@@ -140,16 +144,19 @@ static void freeObject(Obj *object) {
         FREE(ObjString, object);
     } break;
     case OBJ_ARRAY: {
-        freeValueArray(&((ObjArray *)object)->elements);
+        ObjArray *arr = (ObjArray *)object;
+        freeValueArray(&arr->items);
         FREE(ObjArray, object);
     } break;
     case OBJ_MAP: {
-        freeTable(&((ObjMap *)object)->table);
+        ObjMap *map = (ObjMap *)object;
+        freeTable(&map->items);
         FREE(ObjMap, object);
     } break;
     case OBJ_NATIVE:       FREE(ObjNative, object); break;
     case OBJ_UPVALUE:      FREE(ObjUpvalue, object); break;
     case OBJ_BOUND_METHOD: FREE(ObjBoundMethod, object); break;
+    case OBJ_ERROR:        FREE(ObjError, object); break;
     }
 }
 

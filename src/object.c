@@ -1,3 +1,4 @@
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -117,6 +118,28 @@ ObjString *copyString(const char *chars, int length) {
     return allocateString(heapChars, length, hash);
 }
 
+ObjError *newError(bool recoverable, const char *fmt, ...) {
+    va_list va;
+    va_start(va, fmt);
+    size_t len = vsnprintf(NULL, 0, fmt, va);
+    va_end(va);
+
+    va_start(va, fmt);
+    char *buf = ALLOCATE(char, len + 1);
+    vsnprintf(buf, len + 1, fmt, va);
+    va_end(va);
+
+    ObjString *msg = takeString(buf, len);
+    pushRoot(OBJ_VAL(msg)); // keep msg safe
+    ObjError *err = ALLOCATE_OBJ(ObjError, OBJ_ERROR);
+    popRoot();
+
+    // set up error
+    err->msg = msg;
+    err->recoverable = recoverable;
+    return err;
+}
+
 ObjUpvalue *newUpvalue(Value *slot) {
     ObjUpvalue *upvalue = ALLOCATE_OBJ(ObjUpvalue, OBJ_UPVALUE);
     upvalue->closed = NIL_VAL;
@@ -127,41 +150,33 @@ ObjUpvalue *newUpvalue(Value *slot) {
 
 ObjMap *newMap() {
     ObjMap *map = ALLOCATE_OBJ(ObjMap, OBJ_MAP);
-    initTable(&map->table);
+    initTable(&map->items);
     return map;
 }
 
 ObjArray *newArray() {
     ObjArray *arr = ALLOCATE_OBJ(ObjArray, OBJ_ARRAY);
-    initValueArray(&arr->elements);
+    initValueArray(&arr->items);
     return arr;
 }
 
 void appendToArray(ObjArray *arr, Value value) {
-    writeValueArray(&arr->elements, value);
+    writeValueArray(&arr->items, value);
 }
 
 void storeToArray(ObjArray *arr, int index, Value value) {
-    arr->elements.values[index] = value;
+    arr->items.values[index] = value;
 }
 
 Value indexFromArray(ObjArray *arr, int index) {
-    return arr->elements.values[index];
+    return arr->items.values[index];
 }
 
 void deleteFromArray(ObjArray *arr, int index) {
-    for (int i = index; i < arr->elements.cnt - 1; i++) {
-        arr->elements.values[i] = arr->elements.values[i + 1];
+    for (int i = index; i < arr->items.cnt - 1; i++) {
+        arr->items.values[i] = arr->items.values[i + 1];
     }
-    arr->elements.values[arr->elements.cnt--] = NIL_VAL;
-}
-
-int isValidIndex(Value value, int len) {
-    if (!IS_NUMBER(value)) return -1;
-    double index = AS_NUMBER(value);
-    if (index != (double)(int)index) return -2;
-    if ((int)index >= 0 && (int)index < len) return (int)index;
-    return -3;
+    arr->items.values[arr->items.cnt--] = NIL_VAL;
 }
 
 static inline void printFunction(ObjFn *func) {
@@ -176,7 +191,7 @@ void printObject(Value value) {
     switch (OBJ_TYPE(value)) {
     case OBJ_ARRAY: {
         printf("[");
-        ValueArray elms = AS_ARRAY(value)->elements;
+        ValueArray elms = AS_ARRAY(value)->items;
         for (int i = 0; i < elms.cnt; i++) {
             printValue(elms.values[i]);
             if (i != elms.cnt - 1) printf(", ");
@@ -185,7 +200,7 @@ void printObject(Value value) {
     } break;
     case OBJ_MAP: {
         printf("{");
-        Table elms = AS_MAP(value)->table;
+        Table elms = AS_MAP(value)->items;
         bool first = true;
         for (int i = 0; i < elms.cap; i++) {
             Entry entry = elms.entries[i];
@@ -202,14 +217,15 @@ void printObject(Value value) {
     case OBJ_BOUND_METHOD:
         printFunction(AS_BOUND_METHOD(value)->method->fn);
         break;
-    case OBJ_CLASS:    printf("%s", AS_CLASS(value)->name->chars); break;
-    case OBJ_CLOSURE:  printFunction(AS_CLOSURE(value)->fn); break;
-    case OBJ_FUNCTION: printFunction(AS_FUNCTION(value)); break;
     case OBJ_INSTANCE:
         printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
         break;
-    case OBJ_NATIVE:  printf("<native fn>"); break;
-    case OBJ_STRING:  printf("%s", AS_CSTRING(value)); break;
-    case OBJ_UPVALUE: printf("upvalue"); break;
+    case OBJ_CLOSURE:  printFunction(AS_CLOSURE(value)->fn); break;
+    case OBJ_FUNCTION: printFunction(AS_FUNCTION(value)); break;
+    case OBJ_CLASS:    printf("%s", AS_CLASS(value)->name->chars); break;
+    case OBJ_NATIVE:   printf("<native fn>"); break;
+    case OBJ_STRING:   printf("%s", AS_CSTRING(value)); break;
+    case OBJ_ERROR:    printf("%s", AS_ERROR_MSG(value)); break;
+    case OBJ_UPVALUE:  printf("upvalue"); break;
     }
 }
