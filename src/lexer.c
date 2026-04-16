@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -21,51 +22,52 @@ static inline bool isAlpha(char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 static inline bool isDigit(char c) { return c >= '0' && c <= '9'; }
-static inline bool isAtEnd(void) { return *lexer.cur == '\0'; }
-static inline char advance(void) { return *(lexer.cur++); }
-static inline char peek(void) { return *lexer.cur; }
-static inline char peekNext(void) { return isAtEnd() ? '\0' : lexer.cur[1]; }
 
-static inline bool match(char expected) {
-    if (isAtEnd()) return false;
-    if (*lexer.cur != expected) return false;
-    lexer.cur++;
+static inline bool isAtEnd(Lexer *l) { return *l->cur == '\0'; }
+static inline char advance(Lexer *l) { return *(l->cur++); }
+static inline char peek(Lexer *l) { return *l->cur; }
+static inline char peekNext(Lexer *l) { return isAtEnd(l) ? '\0' : l->cur[1]; }
+
+static inline bool match(Lexer *l, char expected) {
+    if (isAtEnd(l)) return false;
+    if (*l->cur != expected) return false;
+    l->cur++;
     return true;
 }
 
-static inline Token makeToken(TokenType type) {
+static inline Token makeToken(Lexer *l, TokenType type) {
     return (Token){
         .type = type,
-        .start = lexer.start,
-        .len = (int)(lexer.cur - lexer.start),
-        .line = lexer.line,
+        .start = l->start,
+        .len = (int)(l->cur - l->start),
+        .line = l->line,
     };
 }
 
-static inline Token errorToken(const char *msg) {
+static inline Token errorToken(Lexer *l, const char *msg) {
     return (Token){
         .type = TOKEN_ERROR,
         .start = msg,
         .len = (int)strnlen(msg, 1024),
-        .line = lexer.line,
+        .line = l->line,
     };
 }
 
-static inline void skipWhiteSpace(void) {
+static inline void skipWhiteSpace(Lexer *l) {
     for (;;) {
-        char c = peek();
+        char c = peek(l);
         switch (c) {
         case ' ':
         case '\r':
-        case '\t': advance(); break;
+        case '\t': advance(l); break;
         case '\n':
             lexer.line++;
-            advance();
+            advance(l);
             break;
         case '/':
-            if (peekNext() == '/') {
-                while (peek() != '\n' && !isAtEnd()) {
-                    advance();
+            if (peekNext(l) == '/') {
+                while (peek(l) != '\n' && !isAtEnd(l)) {
+                    advance(l);
                 }
             } else {
                 return;
@@ -76,116 +78,112 @@ static inline void skipWhiteSpace(void) {
     }
 }
 
-static inline TokenType checkKeyword(int start, int length, const char *rest,
-                                     TokenType type) {
-    if (lexer.cur - lexer.start == start + length &&
-        memcmp(lexer.start + start, rest, length) == 0) {
-        return type;
+static inline TokenType identifierType(Lexer *l) {
+    int len = l->cur - l->start;
+    if ((len < 1) || (len > 6)) return TOKEN_IDENTIFIER;
+
+    typedef struct {
+        TokenType type;
+        const char *chars;
+        int len;
+    } Keyword;
+
+    static const Keyword KEYWORDS[] = {
+        {TOKEN_AND, "and", 3},       {TOKEN_CLASS, "class", 5},
+        {TOKEN_ELSE, "else", 4},     {TOKEN_FALSE, "false", 5},
+        {TOKEN_FOR, "for", 3},       {TOKEN_FUN, "fun", 3},
+        {TOKEN_IF, "if", 2},         {TOKEN_NIL, "nil", 3},
+        {TOKEN_OR, "or", 2},         {TOKEN_PRINT, "print", 5},
+        {TOKEN_RETURN, "return", 6}, {TOKEN_SUPER, "super", 5},
+        {TOKEN_THIS, "this", 4},     {TOKEN_TRUE, "true", 4},
+        {TOKEN_VAR, "var", 3},       {TOKEN_WHILE, "while", 5},
+    };
+    static_assert((sizeof KEYWORDS / sizeof KEYWORDS[0]) == 16,
+                  "number of keywords changed");
+
+    for (size_t i = 0; i < 16; i++) {
+        Keyword kw = KEYWORDS[i];
+        if (len == kw.len && memcmp(l->start, kw.chars, len) == 0) {
+            return kw.type;
+        }
     }
     return TOKEN_IDENTIFIER;
 }
 
-static inline TokenType identifierType(void) {
-    switch (lexer.start[0]) {
-    case 'a': return checkKeyword(1, 2, "nd", TOKEN_AND);
-    case 'c': return checkKeyword(1, 4, "lass", TOKEN_CLASS);
-    case 'e': return checkKeyword(1, 3, "lse", TOKEN_ELSE);
-    case 'f':
-        if (lexer.cur - lexer.start > 1) {
-            switch (lexer.start[1]) {
-            case 'a': return checkKeyword(2, 3, "lse", TOKEN_FALSE);
-            case 'o': return checkKeyword(2, 1, "r", TOKEN_FOR);
-            case 'u': return checkKeyword(2, 1, "n", TOKEN_FUN);
-            }
-        }
-        break;
-    case 'i': return checkKeyword(1, 1, "f", TOKEN_IF);
-    case 'n': return checkKeyword(1, 2, "il", TOKEN_NIL);
-    case 'o': return checkKeyword(1, 1, "r", TOKEN_OR);
-    case 'p': return checkKeyword(1, 4, "rint", TOKEN_PRINT);
-    case 'r': return checkKeyword(1, 5, "eturn", TOKEN_RETURN);
-    case 's': return checkKeyword(1, 4, "uper", TOKEN_SUPER);
-    case 't':
-        if (lexer.cur - lexer.start > 1) {
-            switch (lexer.start[1]) {
-            case 'h': return checkKeyword(2, 2, "is", TOKEN_THIS);
-            case 'r': return checkKeyword(2, 2, "ue", TOKEN_TRUE);
-            }
-        }
-        break;
-    case 'v': return checkKeyword(1, 2, "ar", TOKEN_VAR);
-    case 'w': return checkKeyword(1, 4, "hile", TOKEN_WHILE);
+static inline Token makeIdent(Lexer *l) {
+    while (isAlpha(peek(l)) || isDigit(peek(l))) {
+        advance(l);
     }
-    return TOKEN_IDENTIFIER;
+    return makeToken(l, identifierType(l));
 }
 
-static inline Token makeIdent(void) {
-    while (isAlpha(peek()) || isDigit(peek())) {
-        advance();
-    }
-    return makeToken(identifierType());
-}
-
-static inline Token makeNumber(void) {
-    while (isDigit(peek())) {
-        advance();
+static inline Token makeNumber(Lexer *l) {
+    while (isDigit(peek(l))) {
+        advance(l);
     }
 
     // look for fractional part
-    if (peek() == '.' && isDigit(peekNext())) {
+    if (peek(l) == '.' && isDigit(peekNext(l))) {
         // consume '.'
-        advance();
+        advance(l);
 
-        while (isDigit(peek())) {
-            advance();
+        while (isDigit(peek(l))) {
+            advance(l);
         }
     }
-    return makeToken(TOKEN_NUMBER);
+    return makeToken(l, TOKEN_NUMBER);
 }
 
-static inline Token makeString(void) {
-    while (peek() != '"' && !isAtEnd()) {
-        if (peek() == '\n') lexer.line++;
-        advance();
+static inline Token makeString(Lexer *l) {
+    while (peek(l) != '"' && !isAtEnd(l)) {
+        if (peek(l) == '\n') lexer.line++;
+        advance(l);
     }
-    if (isAtEnd()) return errorToken("Unterminated string");
+    if (isAtEnd(l)) return errorToken(l, "Unterminated string");
     // the closing quote
-    advance();
-    return makeToken(TOKEN_STRING);
+    advance(l);
+    return makeToken(l, TOKEN_STRING);
 }
 
 Token scanToken(void) {
-    skipWhiteSpace();
+    skipWhiteSpace(&lexer);
     lexer.start = lexer.cur;
 
-    if (isAtEnd()) return makeToken(TOKEN_EOF);
+    if (isAtEnd(&lexer)) return makeToken(&lexer, TOKEN_EOF);
 
-    char c = advance();
-    if (isAlpha(c)) return makeIdent();
-    if (isDigit(c)) return makeNumber();
+    char c = advance(&lexer);
+    if (isAlpha(c)) return makeIdent(&lexer);
+    if (isDigit(c)) return makeNumber(&lexer);
 
     switch (c) {
-    case '(': return makeToken(TOKEN_LEFT_PAREN);
-    case ')': return makeToken(TOKEN_RIGHT_PAREN);
-    case '{': return makeToken(TOKEN_LEFT_BRACE);
-    case '}': return makeToken(TOKEN_RIGHT_BRACE);
-    case '[': return makeToken(TOKEN_LEFT_SQR);
-    case ']': return makeToken(TOKEN_RIGHT_SQR);
-    case ';': return makeToken(TOKEN_SEMICOLON);
-    case ':': return makeToken(TOKEN_COLON);
-    case ',': return makeToken(TOKEN_COMMA);
-    case '.': return makeToken(TOKEN_DOT);
-    case '-': return makeToken(TOKEN_MINUS);
-    case '+': return makeToken(TOKEN_PLUS);
-    case '/': return makeToken(TOKEN_SLASH);
-    case '*': return makeToken(TOKEN_STAR);
-    case '!': return makeToken(match('=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
-    case '=': return makeToken(match('=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
-    case '<': return makeToken(match('=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
+    case '(': return makeToken(&lexer, TOKEN_LEFT_PAREN);
+    case ')': return makeToken(&lexer, TOKEN_RIGHT_PAREN);
+    case '{': return makeToken(&lexer, TOKEN_LEFT_BRACE);
+    case '}': return makeToken(&lexer, TOKEN_RIGHT_BRACE);
+    case '[': return makeToken(&lexer, TOKEN_LEFT_SQR);
+    case ']': return makeToken(&lexer, TOKEN_RIGHT_SQR);
+    case ';': return makeToken(&lexer, TOKEN_SEMICOLON);
+    case ':': return makeToken(&lexer, TOKEN_COLON);
+    case ',': return makeToken(&lexer, TOKEN_COMMA);
+    case '.': return makeToken(&lexer, TOKEN_DOT);
+    case '-': return makeToken(&lexer, TOKEN_MINUS);
+    case '+': return makeToken(&lexer, TOKEN_PLUS);
+    case '/': return makeToken(&lexer, TOKEN_SLASH);
+    case '*': return makeToken(&lexer, TOKEN_STAR);
+    case '!':
+        return makeToken(&lexer,
+                         match(&lexer, '=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
+    case '=':
+        return makeToken(&lexer,
+                         match(&lexer, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
+    case '<':
+        return makeToken(&lexer,
+                         match(&lexer, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
     case '>':
-        return makeToken(match('=') ? TOKEN_GREATER_EQUAL : TOKEN_GREATER);
-    case '"': return makeString();
+        return makeToken(&lexer, match(&lexer, '=') ? TOKEN_GREATER_EQUAL
+                                                    : TOKEN_GREATER);
+    case '"': return makeString(&lexer);
     }
 
-    return errorToken("Unexpected character");
+    return errorToken(&lexer, "Unexpected character");
 }
