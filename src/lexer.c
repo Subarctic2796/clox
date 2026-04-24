@@ -80,7 +80,7 @@ static inline void skipWhiteSpace(Lexer *l) {
 
 static inline TokenType identifierType(Lexer *l) {
     int len = l->cur - l->start;
-    if ((len < 1) || (len > 6)) return TOKEN_IDENTIFIER;
+    if ((len < 1) || (len > 8)) return TOKEN_IDENTIFIER;
 
     typedef struct {
         TokenType type;
@@ -97,11 +97,12 @@ static inline TokenType identifierType(Lexer *l) {
         {TOKEN_RETURN, "return", 6}, {TOKEN_SUPER, "super", 5},
         {TOKEN_THIS, "this", 4},     {TOKEN_TRUE, "true", 4},
         {TOKEN_VAR, "var", 3},       {TOKEN_WHILE, "while", 5},
+        {TOKEN_BREAK, "break", 5},   {TOKEN_CONTINUE, "continue", 8},
     };
-    static_assert((sizeof KEYWORDS / sizeof KEYWORDS[0]) == 16,
+    static_assert((sizeof KEYWORDS / sizeof KEYWORDS[0]) == 18,
                   "number of keywords changed");
 
-    for (size_t i = 0; i < 16; i++) {
+    for (size_t i = 0; i < 18; i++) {
         Keyword kw = KEYWORDS[i];
         if (len == kw.len && memcmp(l->start, kw.chars, len) == 0) {
             return kw.type;

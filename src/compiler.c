@@ -65,11 +65,22 @@ typedef struct {
     int index;
 } Symbol;
 
+typedef struct Loop {
+    struct Loop *enclosing;
+    int start;
+    int body;
+    int end;
+    int scopeDepth;
+} Loop;
+
 typedef struct Compiler {
     // current compiler info
     struct Compiler *enclosing;
     ObjFn *fn;
     FunctionType type;
+
+    // loop info
+    Loop *loop;
 
     // locals info
     Local locals[UINT8_COUNT];
@@ -270,6 +281,77 @@ static void endScope(void) {
         emitByte(current->locals[current->localCount - 1].exitOP);
         current->localCount--;
     }
+}
+static int getArgCount(uint8_t *code, const ValueArray constants, int ip) {
+    switch (code[ip]) {
+    case OP_NIL:
+    case OP_TRUE:
+    case OP_FALSE:
+    case OP_GET_INDEX:
+    case OP_POP:
+    case OP_EQUAL:
+    case OP_GREATER:
+    case OP_LESS:
+    case OP_ADD:
+    case OP_SUBTRACT:
+    case OP_MULTIPLY:
+    case OP_DIVIDE:
+    case OP_NOT:
+    case OP_NEGATE:
+    case OP_CLOSE_UPVALUE:
+    case OP_RETURN:
+    case OP_BREAK:         return 0;
+
+    case OP_CONSTANT:
+    case OP_GET_LOCAL:
+    case OP_SET_LOCAL:
+    case OP_GET_GLOBAL:
+    case OP_DEFINE_GLOBAL:
+    case OP_GET_UPVALUE:
+    case OP_SET_UPVALUE:
+    case OP_GET_SUPER:
+    case OP_METHOD:
+    case OP_BUILD_ARRAY:
+    case OP_BUILD_MAP:     return 1;
+
+    case OP_JUMP:
+    case OP_JUMP_IF_FALSE:
+    case OP_LOOP:
+    case OP_CLASS:
+    case OP_CALL:          return 2;
+
+    case OP_INVOKE: return 4;
+
+    case OP_CLOSURE: {
+        int constant = code[ip + 1];
+        ObjFn *loadedFn = AS_FUNCTION(constants.values[constant]);
+
+        // There is one byte for the constant, then two for each upvalue.
+        return 1 + (loadedFn->upvalueCnt * 2);
+    }
+    }
+    return 0;
+}
+
+static void endLoop() {
+    if (current->loop->end != -1) {
+        patchJump(current->loop->end);
+        emitByte(OP_POP);
+    }
+
+    int i = current->loop->body;
+    while (i < curChunk(current)->cnt) {
+        if (curChunk(current)->code[i] == OP_BREAK) {
+            curChunk(current)->code[i] = OP_JUMP;
+            patchJump(i + 1);
+            i += 3;
+        } else {
+            i += 1 + getArgCount(curChunk(current)->code,
+                                 curChunk(current)->constants, i);
+        }
+    }
+
+    current->loop = current->loop->enclosing;
 }
 
 static inline void expression(void);
@@ -685,6 +767,8 @@ ParseRule rules[] = {
     [TOKEN_TRUE] = {literal, NULL, PREC_NONE},
     [TOKEN_VAR] = {NULL, NULL, PREC_NONE},
     [TOKEN_WHILE] = {NULL, NULL, PREC_NONE},
+    [TOKEN_BREAK] = {NULL, NULL, PREC_NONE},
+    [TOKEN_CONTINUE] = {NULL, NULL, PREC_NONE},
     [TOKEN_ERROR] = {NULL, NULL, PREC_NONE},
     [TOKEN_EOF] = {NULL, NULL, PREC_NONE},
 };
@@ -848,14 +932,14 @@ static void forStmt(void) {
         expressionStmt();
     }
 
-    int loopStartIdx = curChunk(current)->cnt;
-    int exitJmpIdx = -1;
+    Loop loop = {NULL, curChunk(current)->cnt, 0, -1, current->scopeDepth};
+    current->loop = &loop;
     if (!match(TOKEN_SEMICOLON)) {
         expression();
         consume(TOKEN_SEMICOLON, "Expect ';' after loop condition");
 
         // jmp out of the loop if cond is false
-        exitJmpIdx = emitJump(OP_JUMP_IF_FALSE);
+        current->loop->end = emitJump(OP_JUMP_IF_FALSE);
         emitByte(OP_POP); // cond
     }
 
@@ -866,19 +950,16 @@ static void forStmt(void) {
         emitByte(OP_POP);
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after clauses");
 
-        emitLoop(loopStartIdx);
-        loopStartIdx = incrStartIdx;
+        emitLoop(current->loop->start);
+        current->loop->start = incrStartIdx;
         patchJump(bodyJmpIdx);
     }
 
+    current->loop->body = curChunk(current)->cnt;
     statement();
-    emitLoop(loopStartIdx);
+    emitLoop(current->loop->start);
 
-    if (exitJmpIdx != -1) {
-        patchJump(exitJmpIdx);
-        emitByte(OP_POP); // cond
-    }
-
+    endLoop();
     endScope();
 }
 
@@ -922,18 +1003,21 @@ static void returnStmt(void) {
 }
 
 static void whileStmt(void) {
-    int loopStartIdx = curChunk(current)->cnt;
+    Loop loop = {current->loop, curChunk(current)->cnt, 0, 0,
+                 current->scopeDepth};
+    current->loop = &loop;
+
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'");
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
 
-    int exitJmpIdx = emitJump(OP_JUMP_IF_FALSE);
+    current->loop->end = emitJump(OP_JUMP_IF_FALSE);
     emitByte(OP_POP);
+    current->loop->body = curChunk(current)->cnt;
     statement();
-    emitLoop(loopStartIdx);
+    emitLoop(loop.start);
 
-    patchJump(exitJmpIdx);
-    emitByte(OP_POP);
+    endLoop();
 }
 
 static void synchronize(Parser *parser) {
@@ -987,6 +1071,39 @@ static void statement(void) {
         beginScope();
         block();
         endScope();
+    } else if (match(TOKEN_BREAK)) {
+        if (current->loop == NULL) {
+            error("Can only use 'break' inside of loops");
+            return;
+        }
+
+        consume(TOKEN_SEMICOLON, "Expected ';' after break");
+
+        // discard any locals made in the loop
+        int i = current->localCount - 1;
+        while (i >= 0 && current->locals[i].depth > current->loop->scopeDepth) {
+            emitByte(current->locals[i].exitOP);
+            i--;
+        }
+
+        emitJump(OP_BREAK);
+    } else if (match(TOKEN_CONTINUE)) {
+        if (current->loop == NULL) {
+            error("Can only use 'continue' inside of loops");
+            return;
+        }
+
+        consume(TOKEN_SEMICOLON, "Expected ';' after continue");
+
+        // discard any locals made in the loop
+        int i = current->localCount - 1;
+        while (i >= 0 && current->locals[i].depth > current->loop->scopeDepth) {
+            emitByte(current->locals[i].exitOP);
+            i--;
+        }
+
+        // jump to top of the current innermost loop
+        emitLoop(current->loop->start);
     } else {
         expressionStmt();
     }

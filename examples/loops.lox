@@ -3,3 +3,4 @@ for (var i = 0; i < 10; i = i + 1) {
     if (i == 7) break;
     print i;
 }
+// extected output 1 2 4 5 6
