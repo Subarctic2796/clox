@@ -1,6 +1,4 @@
 #include <stdarg.h>
-#include <stdio.h>
-#include <string.h>
 #include <time.h>
 
 #include "chunk.h"
@@ -124,6 +122,24 @@ static Value typeofNative(int argc, Value *args) {
     return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
 }
 
+static bool callValue(Value callee, int argCnt);
+
+static Value toStringNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+    Value v = args[0];
+    if (IS_INSTANCE(v)) {
+        Value toStringKey = OBJ_VAL(copyString("toString", 8));
+
+        ObjInstance *inst = AS_INSTANCE(v);
+        Value toStringMethod;
+        if (tableGet(&inst->klass->methods, toStringKey, &toStringMethod)) {
+            callValue(toStringMethod, 0);
+        }
+        // fallthrough
+    }
+    return OBJ_VAL(valueToString(v));
+}
+
 static void resetStack(void) {
     vm.sp = vm.stack;
     vm.frameCount = 0;
@@ -160,8 +176,8 @@ static void defineNative(const char *name, NativeFn function) {
     ObjNative *fn = newNative(function);
     pushRoot(OBJ_VAL(fn));
     tableSet(&vm.globals, OBJ_VAL(nativeName), OBJ_VAL(fn));
-    popRoot(); // pop native name
     popRoot(); // pop native ptr
+    popRoot(); // pop native name
 }
 
 void initVM(void) {
@@ -189,6 +205,7 @@ void initVM(void) {
     defineNative("len", lenNative);
     defineNative("error", errorNative);
     defineNative("typeof", typeofNative);
+    defineNative("__ toString", toStringNative);
 }
 
 void freeVM(void) {
@@ -436,7 +453,7 @@ static InterpretResult run(void) {
                     return INTERPRET_RUNTIME_ERR;
                 }
 
-                ObjString *result = copyString((char *)(str->chars + index), 1);
+                ObjString *result = copyString(str->chars + index, 1);
                 PUSH(OBJ_VAL(result));
             } break;
             case OBJ_ARRAY: {

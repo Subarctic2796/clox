@@ -158,6 +158,7 @@ ObjString *takeString(char *chars, int length);
 ObjString *copyString(const char *chars, int length);
 
 void printObject(Value value);
+ObjString *objectToString(Value value);
 
 void appendToArray(ObjArray *arr, Value value);
 void storeToArray(ObjArray *arr, int index, Value value);

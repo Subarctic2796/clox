@@ -981,8 +981,18 @@ static void ifStmt(void) {
 }
 
 static void printStmt(void) {
+    // add call to builtin toString
+    // set up for that
+    Token TO_STRING_TOK = syntheticToken("__ toString");
+    uint8_t toStringIdx = identifierConst(&TO_STRING_TOK);
+    emitBytes(OP_GET_GLOBAL, toStringIdx);
+
+    // compile expression
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after value");
+
+    // make sure to call the builtin toString
+    emitBytes(OP_CALL, 1);
     emitByte(OP_PRINT);
 }
 
