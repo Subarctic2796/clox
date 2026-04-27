@@ -122,24 +122,6 @@ static Value typeofNative(int argc, Value *args) {
     return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
 }
 
-static bool callValue(Value callee, int argCnt);
-
-static Value toStringNative(int argc, Value *args) {
-    CHECK_ARITY_NATIVE(1);
-    Value v = args[0];
-    if (IS_INSTANCE(v)) {
-        Value toStringKey = OBJ_VAL(copyString("toString", 8));
-
-        ObjInstance *inst = AS_INSTANCE(v);
-        Value toStringMethod;
-        if (tableGet(&inst->klass->methods, toStringKey, &toStringMethod)) {
-            callValue(toStringMethod, 0);
-        }
-        // fallthrough
-    }
-    return OBJ_VAL(valueToString(v));
-}
-
 static void resetStack(void) {
     vm.sp = vm.stack;
     vm.frameCount = 0;
@@ -205,7 +187,6 @@ void initVM(void) {
     defineNative("len", lenNative);
     defineNative("error", errorNative);
     defineNative("typeof", typeofNative);
-    defineNative("__ toString", toStringNative);
 }
 
 void freeVM(void) {

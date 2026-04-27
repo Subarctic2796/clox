@@ -46,44 +46,6 @@ void printValue(Value value) {
 #endif
 }
 
-ObjString *valueToString(Value value) {
-#ifdef NAN_BOXING
-    if (IS_BOOL(value)) {
-        bool val = AS_BOOL(value);
-        return copyString(val ? "true" : "false", val ? 4 : 5);
-    } else if (IS_NIL(value)) {
-        return copyString("nil", 3);
-    } else if (IS_EMPTY(value)) {
-        return copyString("<empty>", 7);
-    } else if (IS_NUMBER(value)) {
-        int len = snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
-        char *buf = ALLOCATE(char, len + 1);
-        snprintf(buf, len + 1, "%.14g", AS_NUMBER(value));
-        return takeString(buf, len);
-    } else if (IS_OBJ(value)) {
-        return objectToString(value);
-    }
-#else /* ifdef NAN_BOXING */
-    switch (value.type) {
-    case VAL_NIL:   return copyString("nil", 3);
-    case VAL_EMPTY: return copyString("<empty>", 7);
-    case VAL_OBJ:   return objectToString(value);
-    case VAL_BOOL:  {
-        bool val = AS_BOOL(value);
-        return copyString(val ? "true" : "false", val ? 4 : 5);
-    }
-    case VAL_NUMBER: {
-        int len = snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
-        char *buf = ALLOCATE(char, len + 1);
-        snprintf(buf, len + 1, "%.14g", AS_NUMBER(value));
-        return takeString(buf, len);
-    }
-    }
-#endif
-    printf("unreachable\n");
-    abort();
-}
-
 bool valuesEqual(Value a, Value b) {
 #ifdef NAN_BOXING
     if (IS_NUMBER(a) && IS_NUMBER(b)) return AS_NUMBER(a) == AS_NUMBER(b);
