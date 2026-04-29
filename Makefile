@@ -3,9 +3,9 @@
 BIN = clox
 CC = gcc
 # CC = clang
-CFLAGS = -Wall -Wextra -Wpedantic
+CFLAGS = -Wall -Wextra -Wpedantic -Wswitch-enum
 DEBUG_FLAGS = -ggdb -DLOX_DEBUG -fno-omit-frame-pointer -fsanitize=address
-RELEASE_FLAGS = -O3 -flto -march=native
+RELEASE_FLAGS = -ULOX_DEBUG -O3 -flto -march=native
 LDFLAGS = -lm
 
 SRC = src

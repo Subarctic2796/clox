@@ -44,6 +44,11 @@ static inline Token makeToken(Lexer *l, TokenType type) {
     };
 }
 
+static inline Token matchMakeToken(Lexer *l, char expected, TokenType t1,
+                                   TokenType t2) {
+    return makeToken(l, match(l, expected) ? t1 : t2);
+}
+
 static inline Token errorToken(Lexer *l, const char *msg) {
     return (Token){
         .type = TOKEN_ERROR,
@@ -167,22 +172,16 @@ Token scanToken(void) {
     case ':': return makeToken(&lexer, TOKEN_COLON);
     case ',': return makeToken(&lexer, TOKEN_COMMA);
     case '.': return makeToken(&lexer, TOKEN_DOT);
-    case '-': return makeToken(&lexer, TOKEN_MINUS);
-    case '+': return makeToken(&lexer, TOKEN_PLUS);
-    case '/': return makeToken(&lexer, TOKEN_SLASH);
-    case '*': return makeToken(&lexer, TOKEN_STAR);
-    case '!':
-        return makeToken(&lexer,
-                         match(&lexer, '=') ? TOKEN_BANG_EQUAL : TOKEN_BANG);
-    case '=':
-        return makeToken(&lexer,
-                         match(&lexer, '=') ? TOKEN_EQUAL_EQUAL : TOKEN_EQUAL);
-    case '<':
-        return makeToken(&lexer,
-                         match(&lexer, '=') ? TOKEN_LESS_EQUAL : TOKEN_LESS);
-    case '>':
-        return makeToken(&lexer, match(&lexer, '=') ? TOKEN_GREATER_EQUAL
-                                                    : TOKEN_GREATER);
+    case '-': return matchMakeToken(&lexer, '=', TOKEN_MINUS_EQ, TOKEN_MINUS);
+    case '/': return matchMakeToken(&lexer, '=', TOKEN_SLASH_EQ, TOKEN_SLASH);
+    case '*': return matchMakeToken(&lexer, '=', TOKEN_STAR_EQ, TOKEN_STAR);
+    case '+': return matchMakeToken(&lexer, '=', TOKEN_PLUS_EQ, TOKEN_PLUS);
+    case '%':
+        return matchMakeToken(&lexer, '=', TOKEN_PERCENT_EQ, TOKEN_PERCENT);
+    case '!': return matchMakeToken(&lexer, '=', TOKEN_NEQ, TOKEN_BANG);
+    case '=': return matchMakeToken(&lexer, '=', TOKEN_EQEQ, TOKEN_EQ);
+    case '<': return matchMakeToken(&lexer, '=', TOKEN_LTEQ, TOKEN_LT);
+    case '>': return matchMakeToken(&lexer, '=', TOKEN_GTEQ, TOKEN_GT);
     case '"': return makeString(&lexer);
     }
 

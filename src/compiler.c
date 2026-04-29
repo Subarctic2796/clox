@@ -27,7 +27,7 @@ typedef enum {
     PREC_EQUALITY,   // == !=
     PREC_COMPARISON, // < > <= >=
     PREC_TERM,       // + -
-    PREC_FACTOR,     // * /
+    PREC_FACTOR,     // * / %
     PREC_UNARY,      // ! -
     PREC_CALL,       // . ()
     PREC_SUBSCRIPT,  // [expr]
@@ -73,9 +73,15 @@ typedef struct Loop {
     int scopeDepth;
 } Loop;
 
+typedef struct ClassCompiler {
+    struct ClassCompiler *enclosing;
+    bool hasSuperClass;
+} ClassCompiler;
+
 typedef struct Compiler {
     // current compiler info
     struct Compiler *enclosing;
+    ClassCompiler *currentClass;
     ObjFn *fn;
     FunctionType type;
 
@@ -88,6 +94,8 @@ typedef struct Compiler {
 
     // upvalue info
     Upvalue upvalues[UINT8_COUNT];
+
+    // scope info
     int scopeDepth;
 
     // constants info
@@ -95,14 +103,8 @@ typedef struct Compiler {
     int constantsCnt;
 } Compiler;
 
-typedef struct ClassCompiler {
-    struct ClassCompiler *enclosing;
-    bool hasSuperClass;
-} ClassCompiler;
-
 Parser parser = {0};
 Compiler *current = NULL;
-ClassCompiler *currentClass = NULL;
 
 static inline Chunk *curChunk(Compiler *compiler) {
     return &compiler->fn->chunk;
@@ -114,11 +116,14 @@ static void errorAt(Token *token, const char *message) {
     parser.panicMode = true;
     fprintf(stderr, "[line %d] Error", token->line);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (token->type) {
     case TOKEN_EOF:   fprintf(stderr, " at end"); break;
     case TOKEN_ERROR: break;
     default:          fprintf(stderr, " at '%.*s'", token->len, token->start); break;
     }
+#pragma GCC diagnostic pop
 
     fprintf(stderr, ": %s\n", message);
     parser.hadError = true;
@@ -164,28 +169,39 @@ static inline void emitBytes(uint8_t byte1, uint8_t byte2) {
     emitByte(byte2);
 }
 
+static inline void emitShort(int arg) {
+    emitBytes((arg >> 8) & 0xff, arg & 0xff);
+}
+
+static inline void emitOp(OpCode op) { emitByte((uint8_t)op); }
+static inline void emitPop() { emitOp(OP_POP); }
+static inline void emitOpArg(OpCode op, uint8_t arg) { emitBytes(op, arg); }
+static inline void emitOp2Args(OpCode op, int arg1, int arg2) {
+    emitOp(op);
+    emitBytes(arg1, arg2);
+}
+
 static void emitLoop(int loopStart) {
-    emitByte(OP_LOOP);
+    emitOp(OP_LOOP);
 
     int offset = curChunk(current)->cnt - loopStart + 2;
     if (offset > UINT16_MAX) error("Loop body too large");
 
-    emitBytes((offset >> 8) & 0xff, offset & 0xff);
+    emitShort(offset);
 }
 
 static inline int emitJump(uint8_t inst) {
-    emitByte(inst);
-    emitBytes(0xff, 0xff);
+    emitOp2Args(inst, 0xff, 0xff);
     return curChunk(current)->cnt - 2;
 }
 
 static void emitReturn(void) {
     if (current->type == TYPE_INITIALIZER) {
-        emitBytes(OP_GET_LOCAL, 0);
+        emitOpArg(OP_GET_LOCAL, 0);
     } else {
-        emitByte(OP_NIL);
+        emitOp(OP_NIL);
     }
-    emitByte(OP_RETURN);
+    emitOp(OP_RETURN);
 }
 
 static int findSymbol(Value value) {
@@ -219,7 +235,7 @@ static uint8_t makeConstant(Value value) {
 }
 
 static inline void emitConstant(Value value) {
-    emitBytes(OP_CONSTANT, makeConstant(value));
+    emitOpArg(OP_CONSTANT, makeConstant(value));
 }
 
 static void patchJump(int offset) {
@@ -235,6 +251,8 @@ static void patchJump(int offset) {
 static void initCompiler(Compiler *compiler, FunctionType type) {
     compiler->enclosing = current;
     compiler->fn = NULL;
+    compiler->loop = NULL;
+    compiler->currentClass = NULL;
     compiler->type = type;
     compiler->localCount = 0;
     compiler->scopeDepth = 0;
@@ -278,21 +296,22 @@ static void endScope(void) {
     while (current->localCount > 0 &&
            current->locals[current->localCount - 1].depth >
                current->scopeDepth) {
-        emitByte(current->locals[current->localCount - 1].exitOP);
+        emitOp(current->locals[current->localCount - 1].exitOP);
         current->localCount--;
     }
 }
-static int getArgCount(uint8_t *code, const ValueArray constants, int ip) {
-    switch (code[ip]) {
+static inline int getArgCount(uint8_t *code, const ValueArray constants,
+                              int ip) {
+    switch ((OpCode)code[ip]) {
     case OP_NIL:
     case OP_TRUE:
     case OP_FALSE:
-    case OP_GET_INDEX:
     case OP_POP:
     case OP_EQUAL:
     case OP_GREATER:
     case OP_LESS:
     case OP_ADD:
+    case OP_MOD:
     case OP_SUBTRACT:
     case OP_MULTIPLY:
     case OP_DIVIDE:
@@ -300,12 +319,19 @@ static int getArgCount(uint8_t *code, const ValueArray constants, int ip) {
     case OP_NEGATE:
     case OP_CLOSE_UPVALUE:
     case OP_RETURN:
-    case OP_BREAK:         return 0;
+    case OP_BREAK:
+    case OP_PRINT:
+    case OP_INHERIT:
+    case OP_GET_INDEX:
+    case OP_SET_INDEX:     return 0;
 
     case OP_CONSTANT:
+    case OP_GET_PROPERTY:
+    case OP_SET_PROPERTY:
     case OP_GET_LOCAL:
     case OP_SET_LOCAL:
     case OP_GET_GLOBAL:
+    case OP_SET_GLOBAL:
     case OP_DEFINE_GLOBAL:
     case OP_GET_UPVALUE:
     case OP_SET_UPVALUE:
@@ -318,9 +344,9 @@ static int getArgCount(uint8_t *code, const ValueArray constants, int ip) {
     case OP_JUMP_IF_FALSE:
     case OP_LOOP:
     case OP_CLASS:
-    case OP_CALL:          return 2;
-
-    case OP_INVOKE: return 4;
+    case OP_CALL:
+    case OP_INVOKE:
+    case OP_SUPER_INVOKE:  return 2;
 
     case OP_CLOSURE: {
         int constant = code[ip + 1];
@@ -336,7 +362,7 @@ static int getArgCount(uint8_t *code, const ValueArray constants, int ip) {
 static void endLoop() {
     if (current->loop->end != -1) {
         patchJump(current->loop->end);
-        emitByte(OP_POP);
+        emitPop();
     }
 
     int i = current->loop->body;
@@ -471,7 +497,7 @@ static void defineVariable(uint8_t globalIdx) {
         // of the stack hence there is no need to do anything
         return;
     }
-    emitBytes(OP_DEFINE_GLOBAL, globalIdx);
+    emitOpArg(OP_DEFINE_GLOBAL, globalIdx);
 }
 
 static uint8_t argumentList(void) {
@@ -491,7 +517,7 @@ static void and_(bool canAssign) {
     (void)canAssign;
     int endJmpIdx = emitJump(OP_JUMP_IF_FALSE);
 
-    emitByte(OP_POP);
+    emitPop();
     parsePrecedence(PREC_AND);
 
     patchJump(endJmpIdx);
@@ -503,51 +529,57 @@ static void binary(bool canAssign) {
     ParseRule *rule = getRule(operatorType);
     parsePrecedence((Precedence)(rule->precedence + 1));
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (operatorType) {
-    case TOKEN_BANG_EQUAL:    emitBytes(OP_EQUAL, OP_NOT); break;
-    case TOKEN_EQUAL_EQUAL:   emitByte(OP_EQUAL); break;
-    case TOKEN_GREATER:       emitByte(OP_GREATER); break;
-    case TOKEN_GREATER_EQUAL: emitBytes(OP_LESS, OP_NOT); break;
-    case TOKEN_LESS:          emitByte(OP_LESS); break;
-    case TOKEN_LESS_EQUAL:    emitBytes(OP_GREATER, OP_NOT); break;
-    case TOKEN_PLUS:          emitByte(OP_ADD); break;
-    case TOKEN_MINUS:         emitByte(OP_SUBTRACT); break;
-    case TOKEN_STAR:          emitByte(OP_MULTIPLY); break;
-    case TOKEN_SLASH:         emitByte(OP_DIVIDE); break;
-    default:                  return; // Unreachable.
+    case TOKEN_NEQ:     emitBytes(OP_EQUAL, OP_NOT); break;
+    case TOKEN_EQEQ:    emitOp(OP_EQUAL); break;
+    case TOKEN_GT:      emitOp(OP_GREATER); break;
+    case TOKEN_GTEQ:    emitBytes(OP_LESS, OP_NOT); break;
+    case TOKEN_LT:      emitOp(OP_LESS); break;
+    case TOKEN_LTEQ:    emitBytes(OP_GREATER, OP_NOT); break;
+    case TOKEN_PLUS:    emitOp(OP_ADD); break;
+    case TOKEN_MINUS:   emitOp(OP_SUBTRACT); break;
+    case TOKEN_STAR:    emitOp(OP_MULTIPLY); break;
+    case TOKEN_SLASH:   emitOp(OP_DIVIDE); break;
+    case TOKEN_PERCENT: emitOp(OP_MOD); break;
+    default:            return; // Unreachable.
     }
+#pragma GCC diagnostic pop
 }
 
 static void call(bool canAssign) {
     (void)canAssign;
     uint8_t argCnt = argumentList();
-    emitBytes(OP_CALL, argCnt);
+    emitOpArg(OP_CALL, argCnt);
 }
 
 static void dot(bool canAssign) {
     consume(TOKEN_IDENTIFIER, "Expect property name after '.'");
     uint8_t name = identifierConst(&parser.prv);
 
-    if (canAssign && match(TOKEN_EQUAL)) {
+    if (canAssign && match(TOKEN_EQ)) {
         expression();
-        emitBytes(OP_SET_PROPERTY, name);
+        emitOpArg(OP_SET_PROPERTY, name);
     } else if (match(TOKEN_LEFT_PAREN)) {
         uint8_t argCnt = argumentList();
-        emitBytes(OP_INVOKE, name);
-        emitByte(argCnt);
+        emitOp2Args(OP_INVOKE, name, argCnt);
     } else {
-        emitBytes(OP_GET_PROPERTY, name);
+        emitOpArg(OP_GET_PROPERTY, name);
     }
 }
 
 static void literal(bool canAssign) {
     (void)canAssign;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (parser.prv.type) {
-    case TOKEN_FALSE: emitByte(OP_FALSE); break;
-    case TOKEN_TRUE:  emitByte(OP_TRUE); break;
-    case TOKEN_NIL:   emitByte(OP_NIL); break;
+    case TOKEN_FALSE: emitOp(OP_FALSE); break;
+    case TOKEN_TRUE:  emitOp(OP_TRUE); break;
+    case TOKEN_NIL:   emitOp(OP_NIL); break;
     default:          return;
     }
+#pragma GCC diagnostic pop
 }
 
 static void grouping(bool canAssign) {
@@ -568,7 +600,7 @@ static void or_(bool canAssign) {
     int endJumpIdx = emitJump(OP_JUMP);
 
     patchJump(elseJumpIdx);
-    emitByte(OP_POP);
+    emitPop();
 
     parsePrecedence(PREC_OR);
     patchJump(endJumpIdx);
@@ -600,8 +632,7 @@ static void array(bool canAssign) {
 
     consume(TOKEN_RIGHT_SQR, "Expect ']' after array literal");
 
-    emitByte(OP_BUILD_ARRAY);
-    emitByte((uint8_t)cnt);
+    emitOpArg(OP_BUILD_ARRAY, cnt);
 }
 
 static void map(bool canAssign) {
@@ -626,23 +657,30 @@ static void map(bool canAssign) {
 
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after map literal");
 
-    emitByte(OP_BUILD_MAP);
-    emitByte((uint8_t)cnt);
+    emitOpArg(OP_BUILD_MAP, cnt);
 }
 
 static void subscript(bool canAssign) {
     parsePrecedence(PREC_OR);
     consume(TOKEN_RIGHT_SQR, "Expect ']' after index");
 
-    if (canAssign && match(TOKEN_EQUAL)) {
+    if (canAssign && match(TOKEN_EQ)) {
         expression();
-        emitByte(OP_SET_INDEX);
+        emitOp(OP_SET_INDEX);
     } else {
-        emitByte(OP_GET_INDEX);
+        emitOp(OP_GET_INDEX);
     }
 }
 
 static void namedVariable(Token name, bool canAssign) {
+#define SHORT_HAND_ASSIGNMET(op)                                               \
+    do {                                                                       \
+        emitOpArg(getOp, argIdx);                                              \
+        expression();                                                          \
+        emitOp(op);                                                            \
+        emitOpArg(setOp, argIdx);                                              \
+    } while (0)
+
     uint8_t getOp, setOp;
     int argIdx = resolveLocal(current, &name);
     if (argIdx != -1) {
@@ -657,12 +695,24 @@ static void namedVariable(Token name, bool canAssign) {
         setOp = OP_SET_GLOBAL;
     }
 
-    if (canAssign && match(TOKEN_EQUAL)) {
+    if (canAssign && match(TOKEN_EQ)) {
         expression();
-        emitBytes(setOp, argIdx);
+        emitOpArg(setOp, argIdx);
+    } else if (canAssign && match(TOKEN_PLUS_EQ)) {
+        SHORT_HAND_ASSIGNMET(OP_ADD);
+    } else if (canAssign && match(TOKEN_MINUS_EQ)) {
+        SHORT_HAND_ASSIGNMET(OP_SUBTRACT);
+    } else if (canAssign && match(TOKEN_SLASH_EQ)) {
+        SHORT_HAND_ASSIGNMET(OP_DIVIDE);
+    } else if (canAssign && match(TOKEN_STAR_EQ)) {
+        SHORT_HAND_ASSIGNMET(OP_MULTIPLY);
+    } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
+        SHORT_HAND_ASSIGNMET(OP_MOD);
     } else {
-        emitBytes(getOp, argIdx);
+        emitOpArg(getOp, argIdx);
     }
+
+#undef OP_EQ_ASSIGNMET
 }
 
 static inline void variable(bool canAssign) {
@@ -678,9 +728,9 @@ static inline Token syntheticToken(const char *txt) {
 
 static void super_(bool canAssign) {
     (void)canAssign;
-    if (currentClass == NULL) {
+    if (current->currentClass == NULL) {
         error("Can't use 'super' outside of a class");
-    } else if (!currentClass->hasSuperClass) {
+    } else if (!current->currentClass->hasSuperClass) {
         error("Can't use 'super' in a class with no superclass");
     }
 
@@ -692,17 +742,16 @@ static void super_(bool canAssign) {
     if (match(TOKEN_LEFT_PAREN)) {
         uint8_t argCnt = argumentList();
         namedVariable(syntheticToken("super"), false);
-        emitBytes(OP_SUPER_INVOKE, name);
-        emitByte(argCnt);
+        emitOp2Args(OP_SUPER_INVOKE, name, argCnt);
     } else {
         namedVariable(syntheticToken("super"), false);
-        emitBytes(OP_GET_SUPER, name);
+        emitOpArg(OP_GET_SUPER, name);
     }
 }
 
 static void this_(bool canAssign) {
     (void)canAssign;
-    if (currentClass == NULL) {
+    if (current->currentClass == NULL) {
         error("Can't use 'this' outside of a class");
         return;
     }
@@ -717,12 +766,15 @@ static void unary(bool canAssign) {
     // compile the operand
     parsePrecedence(PREC_UNARY);
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
     // emit the operator instruction
     switch (operatorType) {
-    case TOKEN_BANG:  emitByte(OP_NOT); break;
-    case TOKEN_MINUS: emitByte(OP_NEGATE); break;
+    case TOKEN_BANG:  emitOp(OP_NOT); break;
+    case TOKEN_MINUS: emitOp(OP_NEGATE); break;
     default:          return;
     }
+#pragma GCC diagnostic pop
 }
 
 ParseRule rules[] = {
@@ -734,20 +786,26 @@ ParseRule rules[] = {
     [TOKEN_RIGHT_SQR] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
     [TOKEN_DOT] = {NULL, dot, PREC_CALL},
-    [TOKEN_MINUS] = {unary, binary, PREC_TERM},
-    [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},
     [TOKEN_COLON] = {NULL, NULL, PREC_NONE},
+    [TOKEN_MINUS] = {unary, binary, PREC_TERM},
+    [TOKEN_PLUS] = {NULL, binary, PREC_TERM},
     [TOKEN_SLASH] = {NULL, binary, PREC_FACTOR},
     [TOKEN_STAR] = {NULL, binary, PREC_FACTOR},
+    [TOKEN_PERCENT] = {NULL, binary, PREC_FACTOR},
     [TOKEN_BANG] = {unary, NULL, PREC_NONE},
-    [TOKEN_BANG_EQUAL] = {NULL, binary, PREC_EQUALITY},
-    [TOKEN_EQUAL] = {NULL, NULL, PREC_NONE},
-    [TOKEN_EQUAL_EQUAL] = {NULL, binary, PREC_EQUALITY},
-    [TOKEN_GREATER] = {NULL, binary, PREC_COMPARISON},
-    [TOKEN_GREATER_EQUAL] = {NULL, binary, PREC_COMPARISON},
-    [TOKEN_LESS] = {NULL, binary, PREC_COMPARISON},
-    [TOKEN_LESS_EQUAL] = {NULL, binary, PREC_COMPARISON},
+    [TOKEN_NEQ] = {NULL, binary, PREC_EQUALITY},
+    [TOKEN_EQ] = {NULL, NULL, PREC_NONE},
+    [TOKEN_EQEQ] = {NULL, binary, PREC_EQUALITY},
+    [TOKEN_GT] = {NULL, binary, PREC_COMPARISON},
+    [TOKEN_GTEQ] = {NULL, binary, PREC_COMPARISON},
+    [TOKEN_LT] = {NULL, binary, PREC_COMPARISON},
+    [TOKEN_LTEQ] = {NULL, binary, PREC_COMPARISON},
+    [TOKEN_MINUS_EQ] = {NULL, binary, PREC_NONE},
+    [TOKEN_PLUS_EQ] = {NULL, binary, PREC_NONE},
+    [TOKEN_SLASH_EQ] = {NULL, binary, PREC_NONE},
+    [TOKEN_STAR_EQ] = {NULL, binary, PREC_NONE},
+    [TOKEN_PERCENT_EQ] = {NULL, binary, PREC_NONE},
     [TOKEN_IDENTIFIER] = {variable, NULL, PREC_NONE},
     [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
@@ -794,7 +852,7 @@ static void parsePrecedence(Precedence precedence) {
         ParseFn infixRule = getRule(parser.prv.type)->infix;
         infixRule(canAssign);
 
-        if (canAssign && match(TOKEN_EQUAL)) error("Invalid assignment target");
+        if (canAssign && match(TOKEN_EQ)) error("Invalid assignment target");
     }
 }
 
@@ -831,7 +889,7 @@ static void function(FunctionType type) {
     // don't need to call endScope as endCompiler
     // closes the scope implicitly
     ObjFn *function = endCompiler();
-    emitBytes(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
+    emitOpArg(OP_CLOSURE, makeConstant(OBJ_VAL(function)));
 
     for (int i = 0; i < function->upvalueCnt; i++) {
         // true is represented as uint8_t 1
@@ -850,7 +908,7 @@ static void method(void) {
         type = TYPE_INITIALIZER;
     }
     function(type);
-    emitBytes(OP_METHOD, constant);
+    emitOpArg(OP_METHOD, constant);
 }
 
 static void classDecl(void) {
@@ -859,13 +917,13 @@ static void classDecl(void) {
     uint8_t nameConst = identifierConst(&parser.prv);
     declareVariable();
 
-    emitBytes(OP_CLASS, nameConst);
+    emitOpArg(OP_CLASS, nameConst);
     defineVariable(nameConst);
 
-    ClassCompiler classCompiler = {currentClass, false};
-    currentClass = &classCompiler;
+    ClassCompiler classCompiler = {current->currentClass, false};
+    current->currentClass = &classCompiler;
 
-    if (match(TOKEN_LESS)) {
+    if (match(TOKEN_LT)) {
         consume(TOKEN_IDENTIFIER, "Expect superclass name");
         variable(false);
 
@@ -878,7 +936,7 @@ static void classDecl(void) {
         defineVariable(0);
 
         namedVariable(className, false);
-        emitByte(OP_INHERIT);
+        emitOp(OP_INHERIT);
         classCompiler.hasSuperClass = true;
     }
 
@@ -888,11 +946,11 @@ static void classDecl(void) {
         method();
     }
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body");
-    emitByte(OP_POP);
+    emitPop();
 
     if (classCompiler.hasSuperClass) endScope();
 
-    currentClass = currentClass->enclosing;
+    current->currentClass = current->currentClass->enclosing;
 }
 
 static void funDecl(void) {
@@ -905,10 +963,10 @@ static void funDecl(void) {
 static void varDecl(void) {
     uint8_t globalIdx = parseVariable("Expect variable name");
 
-    if (match(TOKEN_EQUAL)) {
+    if (match(TOKEN_EQ)) {
         expression();
     } else {
-        emitByte(OP_NIL);
+        emitOp(OP_NIL);
     }
     consume(TOKEN_SEMICOLON, "Expect ';' after variable declaraion");
 
@@ -918,7 +976,7 @@ static void varDecl(void) {
 static void expressionStmt(void) {
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after expression");
-    emitByte(OP_POP);
+    emitPop();
 }
 
 static void forStmt(void) {
@@ -940,14 +998,14 @@ static void forStmt(void) {
 
         // jmp out of the loop if cond is false
         current->loop->end = emitJump(OP_JUMP_IF_FALSE);
-        emitByte(OP_POP); // cond
+        emitPop(); // cond
     }
 
     if (!match(TOKEN_RIGHT_PAREN)) {
         int bodyJmpIdx = emitJump(OP_JUMP);
         int incrStartIdx = curChunk(current)->cnt;
         expression();
-        emitByte(OP_POP);
+        emitPop();
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after clauses");
 
         emitLoop(current->loop->start);
@@ -969,12 +1027,12 @@ static void ifStmt(void) {
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
 
     int thenJumpIdx = emitJump(OP_JUMP_IF_FALSE);
-    emitByte(OP_POP); // true branch pop
+    emitPop(); // true branch pop
     statement();
 
     int elseJumpIdx = emitJump(OP_JUMP);
     patchJump(thenJumpIdx);
-    emitByte(OP_POP); // false branch pop
+    emitPop(); // false branch pop
 
     if (match(TOKEN_ELSE)) statement();
     patchJump(elseJumpIdx);
@@ -983,7 +1041,7 @@ static void ifStmt(void) {
 static void printStmt(void) {
     expression();
     consume(TOKEN_SEMICOLON, "Expect ';' after value");
-    emitByte(OP_PRINT);
+    emitOp(OP_PRINT);
 }
 
 static void returnStmt(void) {
@@ -998,7 +1056,7 @@ static void returnStmt(void) {
 
         expression();
         consume(TOKEN_SEMICOLON, "Expect ';' after return value");
-        emitByte(OP_RETURN);
+        emitOp(OP_RETURN);
     }
 }
 
@@ -1012,7 +1070,7 @@ static void whileStmt(void) {
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
 
     current->loop->end = emitJump(OP_JUMP_IF_FALSE);
-    emitByte(OP_POP);
+    emitPop();
     current->loop->body = curChunk(current)->cnt;
     statement();
     emitLoop(loop.start);
@@ -1025,6 +1083,8 @@ static void synchronize(Parser *parser) {
 
     while (parser->cur.type != TOKEN_EOF) {
         if (parser->prv.type == TOKEN_SEMICOLON) return;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
         switch (parser->cur.type) {
         case TOKEN_CLASS:
         case TOKEN_FUN:
@@ -1037,6 +1097,7 @@ static void synchronize(Parser *parser) {
 
         default:; // Do nothing.
         }
+#pragma GCC diagnostic pop
 
         advance();
     }
@@ -1054,6 +1115,15 @@ static void declaration(void) {
     }
 
     if (parser.panicMode) synchronize(&parser);
+}
+
+// discards any locals created
+static inline void discardLocals(int depth) {
+    int i = current->localCount - 1;
+    while (i >= 0 && current->locals[i].depth > depth) {
+        emitOp(current->locals[i].exitOP);
+        i--;
+    }
 }
 
 static void statement(void) {
@@ -1080,11 +1150,7 @@ static void statement(void) {
         consume(TOKEN_SEMICOLON, "Expected ';' after break");
 
         // discard any locals made in the loop
-        int i = current->localCount - 1;
-        while (i >= 0 && current->locals[i].depth > current->loop->scopeDepth) {
-            emitByte(current->locals[i].exitOP);
-            i--;
-        }
+        discardLocals(current->loop->scopeDepth);
 
         emitJump(OP_BREAK);
     } else if (match(TOKEN_CONTINUE)) {
@@ -1096,11 +1162,7 @@ static void statement(void) {
         consume(TOKEN_SEMICOLON, "Expected ';' after continue");
 
         // discard any locals made in the loop
-        int i = current->localCount - 1;
-        while (i >= 0 && current->locals[i].depth > current->loop->scopeDepth) {
-            emitByte(current->locals[i].exitOP);
-            i--;
-        }
+        discardLocals(current->loop->scopeDepth);
 
         // jump to top of the current innermost loop
         emitLoop(current->loop->start);

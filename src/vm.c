@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdarg.h>
 #include <time.h>
 
@@ -222,6 +223,8 @@ static bool call(ObjClosure *closure, int argc) {
 
 static bool callValue(Value callee, int argCnt) {
     if (IS_OBJ(callee)) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
         switch (OBJ_TYPE(callee)) {
         case OBJ_BOUND_METHOD: {
             ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
@@ -254,6 +257,7 @@ static bool callValue(Value callee, int argCnt) {
         }
         default: break; // non-callable object type
         }
+#pragma GCC diagnostic pop
     }
     runtimeError("Can only call functions and classes");
     return false;
@@ -417,6 +421,8 @@ static InterpretResult run(void) {
                 return INTERPRET_RUNTIME_ERR;
             }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
             switch (OBJ_TYPE(PEEK(1))) {
             case OBJ_STRING: {
                 Value index_ = POP();
@@ -469,6 +475,7 @@ static InterpretResult run(void) {
             } break;
             default: break;
             }
+#pragma GCC diagnostic pop
         } break;
         case OP_SET_INDEX: {
             if (!isIndexable(PEEK(2))) {
@@ -477,9 +484,11 @@ static InterpretResult run(void) {
                 return INTERPRET_RUNTIME_ERR;
             }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
             switch (OBJ_TYPE(PEEK(2))) {
             case OBJ_STRING: {
-                runtimeError("Can not index setting on strings");
+                runtimeError("Can not use index setting on strings");
                 return INTERPRET_RUNTIME_ERR;
             } break;
             case OBJ_ARRAY: {
@@ -517,6 +526,7 @@ static InterpretResult run(void) {
             } break;
             default: break;
             }
+#pragma GCC diagnostic pop
         } break;
         case OP_GET_LOCAL: {
             uint8_t slot = READ_BYTE();
@@ -583,7 +593,7 @@ static InterpretResult run(void) {
             ObjInstance *instance = AS_INSTANCE(PEEK(1));
             tableSet(&instance->fields, READ_CONST(), PEEK(0));
             Value value = POP();
-            (void)POP();
+            (void)POP(); // instance
             PUSH(value);
         } break;
         case OP_GET_SUPER: {
@@ -611,16 +621,25 @@ static InterpretResult run(void) {
                 return INTERPRET_RUNTIME_ERR;
             }
         } break;
+        case OP_MOD: {
+            if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) {
+                runtimeError("Operands must be numbers");
+                return INTERPRET_RUNTIME_ERR;
+            }
+            double b = AS_NUMBER(POP());
+            double a = AS_NUMBER(POP());
+            PUSH(NUMBER_VAL(fmod(a, b)));
+        } break;
         case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
         case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
         case OP_DIVIDE:   BINARY_OP(NUMBER_VAL, /); break;
-        case OP_NOT:      PUSH(BOOL_VAL(isFalsey(POP()))); break;
+        case OP_NOT:      vm.sp[-1] = BOOL_VAL(isFalsey(vm.sp[-1])); break;
         case OP_NEGATE:   {
             if (!IS_NUMBER(PEEK(0))) {
                 runtimeError("Operand must be a number");
                 return INTERPRET_RUNTIME_ERR;
             }
-            PUSH(NUMBER_VAL(-AS_NUMBER(POP())));
+            vm.sp[-1] = NUMBER_VAL(-AS_NUMBER(vm.sp[-1]));
         } break;
         case OP_PRINT: {
 #ifdef LOX_DEBUG
