@@ -7,6 +7,8 @@
 #include "compiler.h"
 #include "lexer.h"
 #include "memory.h"
+#include "object.h"
+#include "table.h"
 #include "value.h"
 #include "vm.h"
 
@@ -60,11 +62,6 @@ typedef enum {
     TYPE_SCRIPT,
 } FunctionType;
 
-typedef struct {
-    Value value;
-    int index;
-} Symbol;
-
 typedef struct Loop {
     struct Loop *enclosing;
     int start;
@@ -85,6 +82,9 @@ typedef struct Compiler {
     ObjFn *fn;
     FunctionType type;
 
+    // constants info
+    Table constantsTable;
+
     // loop info
     Loop *loop;
 
@@ -97,10 +97,6 @@ typedef struct Compiler {
 
     // scope info
     int scopeDepth;
-
-    // constants info
-    Symbol constantsTable[UINT8_COUNT];
-    int constantsCnt;
 } Compiler;
 
 Parser parser = {0};
@@ -204,18 +200,11 @@ static void emitReturn(void) {
     emitOp(OP_RETURN);
 }
 
-static int findSymbol(Value value) {
-    for (int i = 0; i < current->constantsCnt; i++) {
-        Symbol symbol = current->constantsTable[i];
-        if (valuesEqual(value, symbol.value)) return symbol.index;
-    }
-    return -1;
-}
-
 static uint8_t makeConstant(Value value) {
-    int existing = findSymbol(value);
-    // reuse existing constant
-    if (existing != -1) return (uint8_t)existing;
+    Value existing;
+    if (tableGet(&current->constantsTable, value, &existing)) {
+        return (uint8_t)AS_NUMBER(existing); // reuse existing constant
+    }
 
     // add constant
     // make sure not collected
@@ -229,8 +218,7 @@ static uint8_t makeConstant(Value value) {
         return 0;
     }
 
-    current->constantsTable[current->constantsCnt++] =
-        ((Symbol){value, constIdx});
+    tableSet(&current->constantsTable, value, NUMBER_VAL(constIdx));
     return (uint8_t)constIdx;
 }
 
@@ -249,14 +237,9 @@ static void patchJump(int offset) {
 }
 
 static void initCompiler(Compiler *compiler, FunctionType type) {
+    *compiler = (Compiler){0};
     compiler->enclosing = current;
-    compiler->fn = NULL;
-    compiler->loop = NULL;
-    compiler->currentClass = NULL;
     compiler->type = type;
-    compiler->localCount = 0;
-    compiler->scopeDepth = 0;
-    compiler->constantsCnt = 0;
     compiler->fn = newFunction();
     current = compiler;
 
@@ -286,6 +269,7 @@ static ObjFn *endCompiler(void) {
     }
 #endif
     // free constants table
+    freeTable(&current->constantsTable);
     current = current->enclosing;
     return fn;
 }
@@ -990,7 +974,8 @@ static void forStmt(void) {
         expressionStmt();
     }
 
-    Loop loop = {NULL, curChunk(current)->cnt, 0, -1, current->scopeDepth};
+    Loop loop = {current->loop, curChunk(current)->cnt, 0, -1,
+                 current->scopeDepth};
     current->loop = &loop;
     if (!match(TOKEN_SEMICOLON)) {
         expression();
@@ -1193,6 +1178,7 @@ void markCompilerRoots(void) {
     Compiler *compiler = current;
     while (compiler != NULL) {
         markObject((Obj *)compiler->fn);
+        markTable(&compiler->constantsTable);
         compiler = compiler->enclosing;
     }
 }
