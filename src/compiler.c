@@ -192,6 +192,9 @@ static inline int emitJump(uint8_t inst) {
 }
 
 static void emitReturn(void) {
+    // TODO: if current->type == method or function
+    // and last opcode is OP_RETURN then don't emit
+    // OP_NIL, and OP_RETURN
     if (current->type == TYPE_INITIALIZER) {
         emitOpArg(OP_GET_LOCAL, 0);
     } else {
@@ -539,18 +542,38 @@ static void call(bool canAssign) {
 }
 
 static void dot(bool canAssign) {
+#define SHORT_HAND_ASSIGNMENT(op)                                              \
+    do {                                                                       \
+        emitOpArg(OP_GET_LOCAL, 0);                                            \
+        emitOpArg(OP_GET_PROPERTY, name);                                      \
+        expression();                                                          \
+        emitOp(op);                                                            \
+        emitOpArg(OP_SET_PROPERTY, name);                                      \
+    } while (0)
+
     consume(TOKEN_IDENTIFIER, "Expect property name after '.'");
     uint8_t name = identifierConst(&parser.prv);
 
     if (canAssign && match(TOKEN_EQ)) {
         expression();
         emitOpArg(OP_SET_PROPERTY, name);
+    } else if (canAssign && match(TOKEN_PLUS_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_ADD);
+    } else if (canAssign && match(TOKEN_MINUS_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_SUBTRACT);
+    } else if (canAssign && match(TOKEN_SLASH_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_DIVIDE);
+    } else if (canAssign && match(TOKEN_STAR_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
+    } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_MOD);
     } else if (match(TOKEN_LEFT_PAREN)) {
         uint8_t argCnt = argumentList();
         emitOp2Args(OP_INVOKE, name, argCnt);
     } else {
         emitOpArg(OP_GET_PROPERTY, name);
     }
+#undef SHORT_HAND_ASSIGNMENT
 }
 
 static void literal(bool canAssign) {
@@ -648,6 +671,7 @@ static void subscript(bool canAssign) {
     parsePrecedence(PREC_OR);
     consume(TOKEN_RIGHT_SQR, "Expect ']' after index");
 
+    // TODO: need to add +=, -=, etc
     if (canAssign && match(TOKEN_EQ)) {
         expression();
         emitOp(OP_SET_INDEX);
@@ -657,7 +681,7 @@ static void subscript(bool canAssign) {
 }
 
 static void namedVariable(Token name, bool canAssign) {
-#define SHORT_HAND_ASSIGNMET(op)                                               \
+#define SHORT_HAND_ASSIGNMENT(op)                                              \
     do {                                                                       \
         emitOpArg(getOp, argIdx);                                              \
         expression();                                                          \
@@ -683,15 +707,15 @@ static void namedVariable(Token name, bool canAssign) {
         expression();
         emitOpArg(setOp, argIdx);
     } else if (canAssign && match(TOKEN_PLUS_EQ)) {
-        SHORT_HAND_ASSIGNMET(OP_ADD);
+        SHORT_HAND_ASSIGNMENT(OP_ADD);
     } else if (canAssign && match(TOKEN_MINUS_EQ)) {
-        SHORT_HAND_ASSIGNMET(OP_SUBTRACT);
+        SHORT_HAND_ASSIGNMENT(OP_SUBTRACT);
     } else if (canAssign && match(TOKEN_SLASH_EQ)) {
-        SHORT_HAND_ASSIGNMET(OP_DIVIDE);
+        SHORT_HAND_ASSIGNMENT(OP_DIVIDE);
     } else if (canAssign && match(TOKEN_STAR_EQ)) {
-        SHORT_HAND_ASSIGNMET(OP_MULTIPLY);
+        SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
     } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
-        SHORT_HAND_ASSIGNMET(OP_MOD);
+        SHORT_HAND_ASSIGNMENT(OP_MOD);
     } else {
         emitOpArg(getOp, argIdx);
     }

@@ -123,6 +123,27 @@ static Value typeofNative(int argc, Value *args) {
     return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
 }
 
+static Value keysNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+    Value v = args[0];
+    if (!IS_MAP(v)) {
+        return OBJ_VAL(newError(
+            false, "'keys' can only be used on maps, got %s", typeofValue(v)));
+    }
+
+    Table map = AS_MAP(v)->items;
+
+    ObjArray *arr = newArray();
+    pushRoot(OBJ_VAL(arr));
+    for (int i = 0; i < map.cap; i++) {
+        Entry entry = map.entries[i];
+        if (IS_EMPTY(entry.key)) continue;
+        appendToArray(arr, entry.key);
+    }
+    popRoot();
+    return OBJ_VAL(arr);
+}
+
 static void resetStack(void) {
     vm.sp = vm.stack;
     vm.frameCount = 0;
@@ -188,6 +209,7 @@ void initVM(void) {
     defineNative("len", lenNative);
     defineNative("error", errorNative);
     defineNative("typeof", typeofNative);
+    defineNative("keys", keysNative);
 }
 
 void freeVM(void) {

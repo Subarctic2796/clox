@@ -1,0 +1,54 @@
+class StrIter {
+    init(str) {
+        this.str = str;
+        this.index = 0;
+    }
+
+    next() { return this.index < len(this.str); }
+    value() {
+        if (!this.next()) return nil;
+        this.index += 1;
+        return this.str[this.index-1];
+    }
+}
+
+class ArrayIter {
+    init(arr) {
+        this.arr = arr;
+        this.index = 0;
+    }
+    next() { return this.index < len(this.arr); }
+    value() {
+        if (!this.next()) return nil;
+        this.index += 1;
+        return this.arr[this.index-1];
+    }
+}
+
+class MapIter {
+    init(map) {
+        this.map = map;
+        this.keys = keys(map);
+        this.index = 0;
+    }
+    next() { return this.index < len(this.keys); }
+    value() {
+        if (!this.next()) return nil;
+        this.index += 1;
+        var key = this.keys[this.index-1];
+        return this.map[key];
+    }
+}
+
+class Iter {
+    init(obj) { this.obj = obj; }
+    next() { return this.obj.next(); }
+    value() { return this.obj.value(); }
+}
+
+//var sIter = StrIter("0123456");
+//var iter = Iter(sIter);
+var mIter
+while (iter.next()) {
+    print iter.value();
+}
