@@ -9,3 +9,13 @@ fun outer() {
     }
   }
 }
+
+class A {
+    makefn(a) {
+        fun __fn() { print a; }
+        this.fn = __fn;
+    }
+}
+var a = A();
+a.makefn(1);
+a.fn();

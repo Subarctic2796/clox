@@ -8,3 +8,6 @@ cd clox
 make build
 ./clox
 ```
+
+# TODOs
+[ ] remove classcompiler from compiler as its causing it to be wrong

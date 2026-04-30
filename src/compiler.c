@@ -78,7 +78,6 @@ typedef struct ClassCompiler {
 typedef struct Compiler {
     // current compiler info
     struct Compiler *enclosing;
-    ClassCompiler *currentClass;
     ObjFn *fn;
     FunctionType type;
 
@@ -101,6 +100,7 @@ typedef struct Compiler {
 
 Parser parser = {0};
 Compiler *current = NULL;
+ClassCompiler *currentClass = NULL;
 
 static inline Chunk *curChunk(Compiler *compiler) {
     return &compiler->fn->chunk;
@@ -712,9 +712,9 @@ static inline Token syntheticToken(const char *txt) {
 
 static void super_(bool canAssign) {
     (void)canAssign;
-    if (current->currentClass == NULL) {
+    if (currentClass == NULL) {
         error("Can't use 'super' outside of a class");
-    } else if (!current->currentClass->hasSuperClass) {
+    } else if (!currentClass->hasSuperClass) {
         error("Can't use 'super' in a class with no superclass");
     }
 
@@ -735,7 +735,7 @@ static void super_(bool canAssign) {
 
 static void this_(bool canAssign) {
     (void)canAssign;
-    if (current->currentClass == NULL) {
+    if (currentClass == NULL) {
         error("Can't use 'this' outside of a class");
         return;
     }
@@ -904,8 +904,8 @@ static void classDecl(void) {
     emitOpArg(OP_CLASS, nameConst);
     defineVariable(nameConst);
 
-    ClassCompiler classCompiler = {current->currentClass, false};
-    current->currentClass = &classCompiler;
+    ClassCompiler classCompiler = {currentClass, false};
+    currentClass = &classCompiler;
 
     if (match(TOKEN_LT)) {
         consume(TOKEN_IDENTIFIER, "Expect superclass name");
@@ -934,7 +934,7 @@ static void classDecl(void) {
 
     if (classCompiler.hasSuperClass) endScope();
 
-    current->currentClass = current->currentClass->enclosing;
+    currentClass = currentClass->enclosing;
 }
 
 static void funDecl(void) {
@@ -1071,6 +1071,8 @@ static void synchronize(Parser *parser) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
         switch (parser->cur.type) {
+        case TOKEN_BREAK:
+        case TOKEN_CONTINUE:
         case TOKEN_CLASS:
         case TOKEN_FUN:
         case TOKEN_VAR:
@@ -1078,7 +1080,7 @@ static void synchronize(Parser *parser) {
         case TOKEN_IF:
         case TOKEN_WHILE:
         case TOKEN_PRINT:
-        case TOKEN_RETURN: return;
+        case TOKEN_RETURN:   return;
 
         default:; // Do nothing.
         }
