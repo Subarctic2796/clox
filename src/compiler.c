@@ -668,6 +668,11 @@ static void map(bool canAssign) {
 }
 
 static void subscript(bool canAssign) {
+#define SHORT_HAND_ASSIGNMENT(op)                                              \
+    do {                                                                       \
+        error("Cannot do index updating yet");                                 \
+    } while (0)
+
     parsePrecedence(PREC_OR);
     consume(TOKEN_RIGHT_SQR, "Expect ']' after index");
 
@@ -675,9 +680,21 @@ static void subscript(bool canAssign) {
     if (canAssign && match(TOKEN_EQ)) {
         expression();
         emitOp(OP_SET_INDEX);
+    } else if (canAssign && match(TOKEN_PLUS_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_ADD);
+    } else if (canAssign && match(TOKEN_MINUS_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_SUBTRACT);
+    } else if (canAssign && match(TOKEN_SLASH_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_DIVIDE);
+    } else if (canAssign && match(TOKEN_STAR_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
+    } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
+        SHORT_HAND_ASSIGNMENT(OP_MOD);
     } else {
         emitOp(OP_GET_INDEX);
     }
+
+#undef SHORT_HAND_ASSIGNMENT
 }
 
 static void namedVariable(Token name, bool canAssign) {
@@ -785,6 +802,13 @@ static void unary(bool canAssign) {
 #pragma GCC diagnostic pop
 }
 
+static void function(FunctionType type);
+
+static void lambda(bool canAssign) {
+    (void)canAssign;
+    function(TYPE_FUNCTION);
+}
+
 ParseRule rules[] = {
     [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
@@ -822,7 +846,7 @@ ParseRule rules[] = {
     [TOKEN_ELSE] = {NULL, NULL, PREC_NONE},
     [TOKEN_FALSE] = {literal, NULL, PREC_NONE},
     [TOKEN_FOR] = {NULL, NULL, PREC_NONE},
-    [TOKEN_FUN] = {NULL, NULL, PREC_NONE},
+    [TOKEN_FUN] = {lambda, NULL, PREC_NONE},
     [TOKEN_IF] = {NULL, NULL, PREC_NONE},
     [TOKEN_NIL] = {literal, NULL, PREC_NONE},
     [TOKEN_OR] = {NULL, or_, PREC_OR},
