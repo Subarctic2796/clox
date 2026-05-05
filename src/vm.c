@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdarg.h>
+#include <stdlib.h>
 #include <time.h>
 
 #include "chunk.h"
@@ -17,6 +18,10 @@
 #include "vm.h"
 
 VM vm = {0};
+
+static inline void push(Value value) { *vm.sp++ = value; }
+static inline Value pop(void) { return *(--vm.sp); }
+static inline Value peek(int dist) { return vm.sp[-1 - dist]; }
 
 #define CHECK_ARITY_NATIVE(arity)                                              \
     if (argc != arity) {                                                       \
@@ -138,6 +143,147 @@ static Value keysNative(int argc, Value *args) {
     return OBJ_VAL(arr);
 }
 
+typedef struct {
+    const char *name;
+    const NativeFn fn;
+} NativeClassFn;
+
+static Value iterInitNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+    if (!isIndexable(args[0])) {
+        return ERROR_VAL(
+            false, "Can only create iterators from strings, arrays, and maps");
+    }
+
+    ObjInstance *inst = AS_INSTANCE(args[-1]);
+
+    ObjString *obj = copyString("obj", 3);
+    pushRoot(OBJ_VAL(obj));
+    ObjString *idx = copyString("_index", 6);
+    pushRoot(OBJ_VAL(idx));
+
+    // add obj and _index to the instance's fields
+    tableSet(&inst->fields, OBJ_VAL(obj), args[0]);
+    tableSet(&inst->fields, OBJ_VAL(idx), NUMBER_VAL(0));
+
+    popRoot(); // obj
+    popRoot(); // idx
+
+    return OBJ_VAL(inst);
+}
+
+static Value iterNextNative(int argc, Value *args) {
+#define OBJ_HASH 3343205242
+#define IDX_HASH 1364385362
+
+    CHECK_ARITY_NATIVE(0);
+
+    ObjInstance *iter = AS_INSTANCE(args[-1]);
+    ObjString *_objStr = tableFindString(&iter->fields, "obj", 3, OBJ_HASH);
+    ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
+
+    Value obj, idx;
+    tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
+    tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
+
+    int index = AS_NUMBER(idx);
+    // update index
+    tableSet(&iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + 1));
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+    switch (OBJ_TYPE(obj)) {
+    case OBJ_STRING: return BOOL_VAL(index < AS_STRING(obj)->length);
+    case OBJ_ARRAY:  return BOOL_VAL(index < AS_ARRAY(obj)->items.cnt);
+    case OBJ_MAP:    {
+        printf("todo iterNextNative[map]\n");
+        abort();
+    } break;
+    default: return NIL_VAL;
+    }
+#pragma GCC diagnostic pop
+
+    return NIL_VAL;
+
+#undef OBJ_HASH
+#undef IDX_HASH
+}
+
+static Value iterValueNative(int argc, Value *args) {
+#define OBJ_HASH 3343205242
+#define IDX_HASH 1364385362
+
+    CHECK_ARITY_NATIVE(0);
+
+    ObjInstance *iter = AS_INSTANCE(args[-1]);
+    ObjString *_objStr = tableFindString(&iter->fields, "obj", 3, OBJ_HASH);
+    ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
+
+    Value obj, idx;
+    tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
+    tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
+
+    int index = AS_NUMBER(idx) - 1;
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+    switch (OBJ_TYPE(obj)) {
+    case OBJ_STRING: return OBJ_VAL(copyString(AS_CSTRING(obj) + index, 1));
+    case OBJ_ARRAY:  return AS_ARRAY(obj)->items.values[index];
+    case OBJ_MAP:    {
+        printf("todo iterValueNative[map]\n");
+        abort();
+    } break;
+    default: return NIL_VAL;
+    }
+#pragma GCC diagnostic pop
+
+    return NIL_VAL;
+
+#undef OBJ_HASH
+#undef IDX_HASH
+}
+
+static Value iterIndexNative(int argc, Value *args) {
+#define IDX_HASH 1364385362
+
+    CHECK_ARITY_NATIVE(0);
+
+    ObjInstance *iter = AS_INSTANCE(args[-1]);
+    ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
+
+    Value idx;
+    tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
+    return NUMBER_VAL(AS_NUMBER(idx) - 1);
+
+#undef IDX_HASH
+}
+
+static void defineNativeClass(const char *name, int nfns,
+                              const NativeClassFn *fns) {
+    // add class to globals
+    ObjString *kname = copyString(name, (int)strnlen(name, 1024));
+    pushRoot(OBJ_VAL(kname));
+    ObjClass *klass = newClass(kname);
+    pushRoot(OBJ_VAL(klass));
+    tableSet(&vm.globals, OBJ_VAL(kname), OBJ_VAL(klass));
+
+    // add native functions to the class
+    for (int i = 0; i < nfns; i++) {
+        NativeClassFn fn = fns[i];
+        ObjString *fname = copyString(fn.name, (int)strnlen(fn.name, 1024));
+        pushRoot(OBJ_VAL(fname));
+        ObjNative *native = newNative(fn.fn);
+        pushRoot(OBJ_VAL(native));
+        tableSet(&klass->methods, OBJ_VAL(fname), OBJ_VAL(native));
+        popRoot(); // fn name
+        popRoot(); // fn
+    }
+
+    popRoot(); // class name
+    popRoot(); // class
+}
+
 static void resetStack(void) {
     vm.sp = vm.stack;
     vm.frameCount = 0;
@@ -178,6 +324,13 @@ static void defineNative(const char *name, NativeFn function) {
     popRoot(); // pop native name
 }
 
+static const NativeClassFn ITER_FNS[] = {
+    {"init", iterInitNative},
+    {"next", iterNextNative},
+    {"value", iterValueNative},
+    {"index", iterIndexNative},
+};
+
 void initVM(void) {
     resetStack();
     vm.objects = NULL;
@@ -204,6 +357,8 @@ void initVM(void) {
     defineNative("error", errorNative);
     defineNative("typeof", typeofNative);
     defineNative("keys", keysNative);
+
+    defineNativeClass("Iter", 4, ITER_FNS);
 }
 
 void freeVM(void) {
@@ -212,10 +367,6 @@ void freeVM(void) {
     vm.initString = NULL;
     freeObjects();
 }
-
-static inline void push(Value value) { *vm.sp++ = value; }
-static inline Value pop(void) { return *(--vm.sp); }
-static inline Value peek(int dist) { return vm.sp[-1 - dist]; }
 
 static bool call(ObjClosure *closure, int argc) {
     if (argc != closure->fn->arity) {
@@ -252,7 +403,17 @@ static bool callValue(Value callee, int argCnt) {
             vm.sp[-argCnt - 1] = OBJ_VAL(newInstance(klass));
             Value init;
             if (tableGet(&klass->methods, OBJ_VAL(vm.initString), &init)) {
-                return call(AS_CLOSURE(init), argCnt);
+                if (IS_CLOSURE(init)) return call(AS_CLOSURE(init), argCnt);
+
+                NativeFn native = AS_NATIVE(init);
+                Value result = native(argCnt, vm.sp - argCnt);
+                if (IS_ERROR(result) && !AS_ERROR(result)->recoverable) {
+                    runtimeError(AS_ERROR_MSG(result));
+                    return false;
+                }
+                vm.sp -= argCnt + 1;
+                push(result);
+                return true;
             } else if (argCnt != 0) {
                 runtimeError("Expected 0 arguments but got %d", argCnt);
                 return false;
@@ -285,7 +446,8 @@ static inline bool invokeFromClass(ObjClass *klass, Value name, int argc) {
         runtimeError("Undefined property '%s'", AS_CSTRING(name));
         return false;
     }
-    return call(AS_CLOSURE(method), argc);
+    // return call(AS_CLOSURE(method), argc);
+    return callValue(method, argc);
 }
 
 static bool invoke(Value name, int argCnt) {

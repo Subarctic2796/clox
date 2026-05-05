@@ -10,7 +10,7 @@ typedef struct ObjString ObjString;
 
 #ifdef NAN_BOXING
 
-#define SIGN_BIT ((uint64_t)0x8000000000000000)
+#define SIGN_BIT ((uint64_t)1 << 63)
 #define QNAN     ((uint64_t)0x7ffc000000000000)
 
 #define TAG_NIL   1 // 001

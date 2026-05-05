@@ -77,7 +77,11 @@ static inline uint32_t hashBits(uint64_t hash) {
 }
 
 static inline uint32_t hashNumber(double value) {
+#ifdef NAN_BOXING
     return hashBits(valueToNum(value));
+#else
+    return hashBits(*((uint64_t *)&value));
+#endif
 }
 
 static uint32_t hashObject(Obj *object) {
@@ -91,9 +95,8 @@ static uint32_t hashObject(Obj *object) {
                fn->name->hash;
     }
     case OBJ_INSTANCE: {
-        ObjString *klassName = ((ObjInstance *)object)->klass->name;
-        uint64_t ptr = (uint64_t)OBJ_VAL(object);
-        return klassName->hash ^ hashBits(ptr);
+        uint32_t klassHash = ((ObjInstance *)object)->klass->name->hash;
+        return klassHash ^ hashBits((uint64_t)(uintptr_t)object);
     }
     case OBJ_BOUND_METHOD:
     case OBJ_ARRAY:
