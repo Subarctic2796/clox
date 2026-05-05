@@ -93,6 +93,8 @@ typedef struct {
 
 #endif // NAN_BOXING
 
+#define ERROR_VAL(...) OBJ_VAL(newError(__VA_ARGS__))
+
 typedef struct {
     int cap, cnt;
     Value *values;

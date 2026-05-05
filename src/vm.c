@@ -20,8 +20,8 @@ VM vm = {0};
 
 #define CHECK_ARITY_NATIVE(arity)                                              \
     if (argc != arity) {                                                       \
-        return OBJ_VAL(newError(                                               \
-            false, "Expected " #arity " arguments but got %d", argc));         \
+        return ERROR_VAL(false, "Expected " #arity " arguments but got %d",    \
+                         argc);                                                \
     }
 
 static Value clockNative(int argc, Value *args) {
@@ -34,12 +34,10 @@ static Value clockNative(int argc, Value *args) {
 static Value appendNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(2);
     if (!IS_ARRAY(args[0])) {
-        return OBJ_VAL(newError(false, "Can only append to arrays"));
+        return ERROR_VAL(false, "Can only append to arrays");
     }
 
-    ObjArray *arr = AS_ARRAY(args[0]);
-    Value item = args[1];
-    appendToArray(arr, item);
+    appendToArray(AS_ARRAY(args[0]), args[1]);
     return NIL_VAL;
 }
 
@@ -47,9 +45,9 @@ static Value appendNative(int argc, Value *args) {
 static Value deleteNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(2);
     if (!(IS_ARRAY(args[0]) || IS_MAP(args[0]))) {
-        return OBJ_VAL(
-            newError(false, "Can only use 'delete' on maps and arrays, got %s",
-                     typeofValue(args[0])));
+        return ERROR_VAL(false,
+                         "Can only use 'delete' on maps and arrays, got %s",
+                         typeofValue(args[0]));
     }
 
     if (IS_ARRAY(args[0])) {
@@ -57,13 +55,12 @@ static Value deleteNative(int argc, Value *args) {
         int index = isValidIndex(args[1], arr->items.cnt);
 
         if (index == -1) {
-            return OBJ_VAL(
-                newError(false, "Can only use numbers to index arrays"));
+            return ERROR_VAL(false, "Can only use numbers to index arrays");
         } else if (index == -2) {
-            return OBJ_VAL(
-                newError(false, "can only use integers to index into arrays"));
+            return ERROR_VAL(false,
+                             "can only use integers to index into arrays");
         } else if (index == -3) {
-            return OBJ_VAL(newError(false, "index out of bounds"));
+            return ERROR_VAL(false, "index out of bounds");
         }
 
         deleteFromArray(arr, index);
@@ -72,8 +69,8 @@ static Value deleteNative(int argc, Value *args) {
         ObjMap *map = AS_MAP(args[0]);
         Value key = args[1];
         if (!isHashable(key)) {
-            return OBJ_VAL(
-                newError(false, "%s is an unhashable type", typeofValue(key)));
+            return ERROR_VAL(false, "%s is an unhashable type",
+                             typeofValue(key));
         }
 
         tableDelete(&map->items, key);
@@ -87,22 +84,19 @@ static Value lenNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
 
     if (IS_STRING(args[0])) {
-        int len = AS_STRING(args[0])->length;
-        return NUMBER_VAL(len);
+        return NUMBER_VAL(AS_STRING(args[0])->length);
     } else if (IS_ARRAY(args[0])) {
-        int len = AS_ARRAY(args[0])->items.cnt;
-        return NUMBER_VAL(len);
+        return NUMBER_VAL(AS_ARRAY(args[0])->items.cnt);
     } else if (IS_MAP(args[0])) {
-        int len = AS_MAP(args[0])->items.cnt;
-        return NUMBER_VAL(len);
+        return NUMBER_VAL(AS_MAP(args[0])->items.cnt);
     }
-    return OBJ_VAL(newError(
-        false, "Can only take the length of strings, arrays, and maps"));
+    return ERROR_VAL(false,
+                     "Can only take the length of strings, arrays, and maps");
 }
 
 static Value errorNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
-    return OBJ_VAL(newError(AS_BOOL(args[0]), "this is a recoverable error"));
+    return ERROR_VAL(AS_BOOL(args[0]), "this is a recoverable error");
 }
 
 static Value typeofNative(int argc, Value *args) {
@@ -119,7 +113,7 @@ static Value typeofNative(int argc, Value *args) {
 
         return OBJ_VAL(takeString(buf, len));
     }
-    const char *str = typeofValue(args[0]);
+    const char *str = typeofValue(v);
     return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
 }
 
@@ -127,8 +121,8 @@ static Value keysNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
     Value v = args[0];
     if (!IS_MAP(v)) {
-        return OBJ_VAL(newError(
-            false, "'keys' can only be used on maps, got %s", typeofValue(v)));
+        return ERROR_VAL(false, "'keys' can only be used on maps, got %s",
+                         typeofValue(v));
     }
 
     Table map = AS_MAP(v)->items;
@@ -288,7 +282,7 @@ static bool callValue(Value callee, int argCnt) {
 static inline bool invokeFromClass(ObjClass *klass, Value name, int argc) {
     Value method;
     if (!tableGet(&klass->methods, name, &method)) {
-        runtimeError("Undefined property '%s'", AS_STRING(name)->chars);
+        runtimeError("Undefined property '%s'", AS_CSTRING(name));
         return false;
     }
     return call(AS_CLOSURE(method), argc);
@@ -316,7 +310,7 @@ static bool invoke(Value name, int argCnt) {
 static bool bindMethod(ObjClass *klass, Value name) {
     Value method;
     if (!tableGet(&klass->methods, name, &method)) {
-        runtimeError("Undefined property '%s'", AS_STRING(name)->chars);
+        runtimeError("Undefined property '%s'", AS_CSTRING(name));
         return false;
     }
 
@@ -562,7 +556,7 @@ static InterpretResult run(void) {
             Value name = READ_CONST();
             Value value;
             if (!tableGet(&vm.globals, name, &value)) {
-                runtimeError("Undefined variable '%s'", AS_STRING(name)->chars);
+                runtimeError("Undefined variable '%s'", AS_CSTRING(name));
                 return INTERPRET_RUNTIME_ERR;
             }
             PUSH(value);
@@ -576,7 +570,7 @@ static InterpretResult run(void) {
             Value name = READ_CONST();
             if (tableSet(&vm.globals, name, PEEK(0))) {
                 tableDelete(&vm.globals, name);
-                runtimeError("Undefined variable '%s'", AS_STRING(name)->chars);
+                runtimeError("Undefined variable '%s'", AS_CSTRING(name));
                 return INTERPRET_RUNTIME_ERR;
             }
         } break;
