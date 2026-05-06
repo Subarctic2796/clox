@@ -182,7 +182,7 @@ static Value iterNextNative(int argc, Value *args) {
     ObjString *_objStr = tableFindString(&iter->fields, "obj", 3, OBJ_HASH);
     ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
 
-    Value obj, idx;
+    Value obj = EMPTY_VAL, idx = EMPTY_VAL;
     tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
 
@@ -201,7 +201,7 @@ static Value iterNextNative(int argc, Value *args) {
         }
         result = BOOL_VAL(index < map.cap);
     } break;
-    default: return NIL_VAL;
+    default: return FALSE_VAL;
     }
 #pragma GCC diagnostic pop
 
@@ -224,7 +224,7 @@ static Value iterValueNative(int argc, Value *args) {
     ObjString *_objStr = tableFindString(&iter->fields, "obj", 3, OBJ_HASH);
     ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
 
-    Value obj, idx;
+    Value obj = EMPTY_VAL, idx = EMPTY_VAL;
     tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
 
@@ -256,7 +256,7 @@ static Value iterIndexNative(int argc, Value *args) {
     ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
     ObjString *_objStr = tableFindString(&iter->fields, "obj", 3, OBJ_HASH);
 
-    Value obj, idx;
+    Value obj = EMPTY_VAL, idx = EMPTY_VAL;
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
     tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
 
@@ -341,22 +341,16 @@ static const NativeClassFn ITER_FNS[] = {
 };
 
 void initVM(void) {
+    // zero the VM
+    vm = (VM){0};
     resetStack();
-    vm.objects = NULL;
-    vm.bytesAllocated = 0;
+
+    // set up VM state that should not be a zero value
     vm.nextGC = 1024 * 1024; // 1mib
 
-    vm.grayCnt = 0;
-    vm.grayCap = 0;
-    vm.grayStack = NULL;
-
-    vm.tempCnt = 0;
-
     initTable(&vm.globals);
-
     initTable(&vm.strings);
 
-    vm.initString = NULL;
     vm.initString = copyString("init", 4);
 
     defineNative("clock", clockNative);
@@ -410,7 +404,7 @@ static bool callValue(Value callee, int argCnt) {
         case OBJ_CLASS: {
             ObjClass *klass = AS_CLASS(callee);
             vm.sp[-argCnt - 1] = OBJ_VAL(newInstance(klass));
-            Value init;
+            Value init = EMPTY_VAL;
             if (tableGet(&klass->methods, OBJ_VAL(vm.initString), &init)) {
                 if (IS_CLOSURE(init)) return call(AS_CLOSURE(init), argCnt);
 
@@ -450,7 +444,7 @@ static bool callValue(Value callee, int argCnt) {
 }
 
 static inline bool invokeFromClass(ObjClass *klass, Value name, int argc) {
-    Value method;
+    Value method = EMPTY_VAL;
     if (!tableGet(&klass->methods, name, &method)) {
         runtimeError("Undefined property '%s'", AS_CSTRING(name));
         return false;
@@ -469,7 +463,7 @@ static bool invoke(Value name, int argCnt) {
 
     ObjInstance *instance = AS_INSTANCE(receiver);
 
-    Value value;
+    Value value = EMPTY_VAL;
     if (tableGet(&instance->fields, name, &value)) {
         vm.sp[-argCnt - 1] = value;
         return callValue(value, argCnt);
@@ -479,7 +473,7 @@ static bool invoke(Value name, int argCnt) {
 }
 
 static bool bindMethod(ObjClass *klass, Value name) {
-    Value method;
+    Value method = EMPTY_VAL;
     if (!tableGet(&klass->methods, name, &method)) {
         runtimeError("Undefined property '%s'", AS_CSTRING(name));
         return false;
@@ -589,7 +583,7 @@ static InterpretResult run(void) {
     } while (false)
 #endif
 
-    uint8_t inst;
+    uint8_t inst = OP_BREAK;
     for (;;) {
         TRACE_EXECUTION();
         switch (inst = (OpCode)READ_BYTE()) {
@@ -725,7 +719,7 @@ static InterpretResult run(void) {
         } break;
         case OP_GET_GLOBAL: {
             Value name = READ_CONST();
-            Value value;
+            Value value = EMPTY_VAL;
             if (!tableGet(&vm.globals, name, &value)) {
                 runtimeError("Undefined variable '%s'", AS_CSTRING(name));
                 return INTERPRET_RUNTIME_ERR;
@@ -761,7 +755,7 @@ static InterpretResult run(void) {
 
             ObjInstance *instance = AS_INSTANCE(PEEK(0));
             Value name = READ_CONST();
-            Value value;
+            Value value = EMPTY_VAL;
             if (tableGet(&instance->fields, name, &value)) {
                 (void)POP(); // instance
                 PUSH(value);

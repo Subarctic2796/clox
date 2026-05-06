@@ -204,7 +204,7 @@ static void emitReturn(void) {
 }
 
 static uint8_t makeConstant(Value value) {
-    Value existing;
+    Value existing = EMPTY_VAL;
     if (tableGet(&current->constantsTable, value, &existing)) {
         return (uint8_t)AS_NUMBER(existing); // reuse existing constant
     }
@@ -287,7 +287,7 @@ static void endScope(void) {
         current->localCount--;
     }
 }
-static inline int getArgCount(uint8_t *code, const ValueArray constants,
+static inline int getArgCount(const uint8_t *code, const ValueArray constants,
                               int ip) {
     switch ((OpCode)code[ip]) {
     case OP_NIL:
@@ -706,7 +706,7 @@ static void namedVariable(Token name, bool canAssign) {
         emitOpArg(setOp, argIdx);                                              \
     } while (0)
 
-    uint8_t getOp, setOp;
+    uint8_t getOp = OP_GET_GLOBAL, setOp = OP_SET_GLOBAL;
     int argIdx = resolveLocal(current, &name);
     if (argIdx != -1) {
         getOp = OP_GET_LOCAL;
@@ -826,8 +826,8 @@ ParseRule rules[] = {
     [TOKEN_STAR] = {NULL, binary, PREC_FACTOR},
     [TOKEN_PERCENT] = {NULL, binary, PREC_FACTOR},
     [TOKEN_BANG] = {unary, NULL, PREC_NONE},
-    [TOKEN_NEQ] = {NULL, binary, PREC_EQUALITY},
     [TOKEN_EQ] = {NULL, NULL, PREC_NONE},
+    [TOKEN_NEQ] = {NULL, binary, PREC_EQUALITY},
     [TOKEN_EQEQ] = {NULL, binary, PREC_EQUALITY},
     [TOKEN_GT] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_GTEQ] = {NULL, binary, PREC_COMPARISON},
@@ -859,6 +859,7 @@ ParseRule rules[] = {
     [TOKEN_WHILE] = {NULL, NULL, PREC_NONE},
     [TOKEN_BREAK] = {NULL, NULL, PREC_NONE},
     [TOKEN_CONTINUE] = {NULL, NULL, PREC_NONE},
+    [TOKEN_IN] = {NULL, NULL, PREC_NONE},
     [TOKEN_ERROR] = {NULL, NULL, PREC_NONE},
     [TOKEN_EOF] = {NULL, NULL, PREC_NONE},
 };

@@ -9,7 +9,7 @@ static void repl(void) {
     printf("NAN tagging is enabled\n");
 #endif
     linenoiseHistorySetMaxLen(100);
-    char *line;
+    char *line = NULL;
     while ((line = linenoise("> ")) != NULL) {
         linenoiseHistoryAdd(line);
         interpret(line);

@@ -158,25 +158,24 @@ static int utf8ByteLen(char c) {
  * Returns the codepoint value. Assumes valid UTF-8 encoding. */
 static uint32_t utf8DecodeChar(const char *s, size_t *len) {
     unsigned char *p = (unsigned char *)s;
-    uint32_t cp;
 
     if ((*p & 0x80) == 0) {
         *len = 1;
         return *p;
     } else if ((*p & 0xE0) == 0xC0) {
         *len = 2;
-        cp = (*p & 0x1F) << 6;
+        uint32_t cp = (*p & 0x1F) << 6;
         cp |= (p[1] & 0x3F);
         return cp;
     } else if ((*p & 0xF0) == 0xE0) {
         *len = 3;
-        cp = (*p & 0x0F) << 12;
+        uint32_t cp = (*p & 0x0F) << 12;
         cp |= (p[1] & 0x3F) << 6;
         cp |= (p[2] & 0x3F);
         return cp;
     } else if ((*p & 0xF8) == 0xF0) {
         *len = 4;
-        cp = (*p & 0x07) << 18;
+        uint32_t cp = (*p & 0x07) << 18;
         cp |= (p[1] & 0x3F) << 12;
         cp |= (p[2] & 0x3F) << 6;
         cp |= (p[3] & 0x3F);
@@ -253,7 +252,7 @@ static size_t utf8PrevCharLen(const char *buf, size_t pos) {
     size_t curpos = pos;
 
     /* First, get the last codepoint. */
-    size_t cplen;
+    size_t cplen = 0;
     uint32_t cp = utf8DecodePrev(buf, curpos, &cplen);
     if (cplen == 0) return 0;
     total += cplen;
@@ -262,7 +261,7 @@ static size_t utf8PrevCharLen(const char *buf, size_t pos) {
     /* If we're at an extending character, we need to find what it extends.
      * Keep going back through the grapheme cluster. */
     while (curpos > 0) {
-        size_t prevlen;
+        size_t prevlen = 0;
         uint32_t prevcp = utf8DecodePrev(buf, curpos, &prevlen);
         if (prevlen == 0) break;
 
@@ -309,7 +308,7 @@ static size_t utf8NextCharLen(const char *buf, size_t pos, size_t len) {
     size_t curpos = pos;
 
     /* Get the first codepoint. */
-    size_t cplen;
+    size_t cplen = 0;
     uint32_t cp = utf8DecodeChar(buf + curpos, &cplen);
     total += cplen;
     curpos += cplen;
@@ -318,7 +317,7 @@ static size_t utf8NextCharLen(const char *buf, size_t pos, size_t len) {
 
     /* Consume any extending characters that follow. */
     while (curpos < len) {
-        size_t nextlen;
+        size_t nextlen = 0;
         uint32_t nextcp = utf8DecodeChar(buf + curpos, &nextlen);
 
         if (isZWJ(nextcp) && curpos + nextlen < len) {
@@ -476,7 +475,7 @@ static size_t utf8StrWidth(const char *s, size_t len) {
 /* Return the display width of a single UTF-8 character at position 's'. */
 static int utf8SingleCharWidth(const char *s, size_t len) {
     if (len == 0) return 0;
-    size_t clen;
+    size_t clen = 0;
     uint32_t cp = utf8DecodeChar(s, &clen);
     return utf8CharWidth(cp);
 }
@@ -612,14 +611,12 @@ static void disableRawMode(int fd) {
  * and return it. On error -1 is returned, on success the position of the
  * cursor. */
 static int getCursorPosition(int ifd, int ofd) {
-    char buf[32];
-    int cols, rows;
-    unsigned int i = 0;
-
     /* Report cursor location */
     if (write(ofd, "\x1b[6n", 4) != 4) return -1;
 
     /* Read the response: ESC [ rows ; cols R */
+    char buf[32];
+    unsigned int i = 0;
     while (i < sizeof(buf) - 1) {
         if (read(ifd, buf + i, 1) != 1) break;
         if (buf[i] == 'R') break;
@@ -629,6 +626,7 @@ static int getCursorPosition(int ifd, int ofd) {
 
     /* Parse it. */
     if (buf[0] != ESC || buf[1] != '[') return -1;
+    int cols, rows;
     if (sscanf(buf + 2, "%d;%d", &rows, &cols) != 2) return -1;
     return cols;
 }
@@ -640,7 +638,7 @@ static int getColumns(int ifd, int ofd) {
     char *cols_env = getenv("LINENOISE_COLS");
     if (cols_env) return atoi(cols_env);
 
-    struct winsize ws;
+    struct winsize ws = {0};
     if (ioctl(1, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
         /* ioctl() failed. Try to query the terminal itself. */
 
@@ -837,10 +835,7 @@ struct abuf {
     int len;
 };
 
-static void abInit(struct abuf *ab) {
-    ab->b = NULL;
-    ab->len = 0;
-}
+static void abInit(struct abuf *ab) { *ab = (struct abuf){0}; }
 
 static void abAppend(struct abuf *ab, const char *s, int len) {
     char *new = realloc(ab->b, ab->len + len);
@@ -856,39 +851,39 @@ static void abFree(struct abuf *ab) { free(ab->b); }
 /* Helper of refreshSingleLine() and refreshMultiLine() to show hints
  * to the right of the prompt. Now uses display widths for proper UTF-8. */
 void refreshShowHints(struct abuf *ab, struct linenoiseState *l, int pwidth) {
-    char seq[64];
     size_t bufwidth = utf8StrWidth(l->buf, l->len);
-    if (hintsCallback && pwidth + bufwidth < l->cols) {
-        int color = -1, bold = 0;
-        char *hint = hintsCallback(l->buf, &color, &bold);
-        if (hint) {
-            size_t hintlen = strlen(hint);
-            size_t hintwidth = utf8StrWidth(hint, hintlen);
-            size_t hintmaxwidth = l->cols - (pwidth + bufwidth);
-            /* Truncate hint to fit, respecting UTF-8 boundaries. */
-            if (hintwidth > hintmaxwidth) {
-                size_t i = 0, w = 0;
-                while (i < hintlen) {
-                    size_t clen = utf8NextCharLen(hint, i, hintlen);
-                    int cwidth = utf8SingleCharWidth(hint + i, clen);
-                    if (w + cwidth > hintmaxwidth) break;
-                    w += cwidth;
-                    i += clen;
-                }
-                hintlen = i;
+    if (!(hintsCallback && pwidth + bufwidth < l->cols)) return;
+
+    int color = -1, bold = 0;
+    char *hint = hintsCallback(l->buf, &color, &bold);
+    if (hint) {
+        size_t hintlen = strlen(hint);
+        size_t hintwidth = utf8StrWidth(hint, hintlen);
+        size_t hintmaxwidth = l->cols - (pwidth + bufwidth);
+        /* Truncate hint to fit, respecting UTF-8 boundaries. */
+        if (hintwidth > hintmaxwidth) {
+            size_t i = 0, w = 0;
+            while (i < hintlen) {
+                size_t clen = utf8NextCharLen(hint, i, hintlen);
+                int cwidth = utf8SingleCharWidth(hint + i, clen);
+                if (w + cwidth > hintmaxwidth) break;
+                w += cwidth;
+                i += clen;
             }
-            if (bold == 1 && color == -1) color = 37;
-            if (color != -1 || bold != 0) {
-                snprintf(seq, 64, "\033[%d;%d;49m", bold, color);
-            } else {
-                seq[0] = '\0';
-            }
-            abAppend(ab, seq, strlen(seq));
-            abAppend(ab, hint, hintlen);
-            if (color != -1 || bold != 0) abAppend(ab, "\033[0m", 4);
-            /* Call the function to free the hint returned. */
-            if (freeHintsCallback) freeHintsCallback(hint);
+            hintlen = i;
         }
+        if (bold == 1 && color == -1) color = 37;
+        char seq[64];
+        if (color != -1 || bold != 0) {
+            snprintf(seq, 64, "\033[%d;%d;49m", bold, color);
+        } else {
+            seq[0] = '\0';
+        }
+        abAppend(ab, seq, strlen(seq));
+        abAppend(ab, hint, hintlen);
+        if (color != -1 || bold != 0) abAppend(ab, "\033[0m", 4);
+        /* Call the function to free the hint returned. */
+        if (freeHintsCallback) freeHintsCallback(hint);
     }
 }
 
@@ -903,7 +898,6 @@ void refreshShowHints(struct abuf *ab, struct linenoiseState *l, int pwidth) {
  * This function is UTF-8 aware and uses display widths (not byte counts)
  * for cursor positioning and horizontal scrolling. */
 static void refreshSingleLine(struct linenoiseState *l, int flags) {
-    char seq[64];
     size_t pwidth = utf8StrWidth(l->prompt, l->plen); /* Prompt display width */
     int fd = l->ofd;
     char *buf = l->buf;
@@ -935,7 +929,8 @@ static void refreshSingleLine(struct linenoiseState *l, int flags) {
         lencol -= cwidth;
     }
 
-    struct abuf ab;
+    char seq[64];
+    struct abuf ab = {0};
     abInit(&ab);
     /* Cursor to left edge */
     snprintf(seq, sizeof(seq), "\r");
@@ -982,7 +977,6 @@ static void refreshSingleLine(struct linenoiseState *l, int flags) {
  *
  * This function is UTF-8 aware and uses display widths for positioning. */
 static void refreshMultiLine(struct linenoiseState *l, int flags) {
-    char seq[64];
     size_t pwidth = utf8StrWidth(l->prompt, l->plen); /* Prompt display width */
     size_t bufwidth = utf8StrWidth(l->buf, l->len);   /* Buffer display width */
     size_t poswidth = utf8StrWidth(l->buf, l->pos);   /* Cursor display width */
@@ -992,14 +986,15 @@ static void refreshMultiLine(struct linenoiseState *l, int flags) {
     int rpos2;             /* rpos after refresh. */
     int old_rows = l->oldrows;
     int fd = l->ofd;
-    struct abuf ab;
 
     l->oldrows = rows;
 
     /* First step: clear all the lines used before. To do so start by
      * going to the last row. */
+    struct abuf ab = {0};
     abInit(&ab);
 
+    char seq[64];
     if (flags & REFRESH_CLEAN) {
         if (old_rows - rpos > 0) {
             lndebug("go down %d", old_rows - rpos);
@@ -1342,8 +1337,6 @@ char *linenoiseEditFeed(struct linenoiseState *l) {
         return linenoiseNoTTY();
 
     char c;
-    char seq[3];
-
     int nread = read(l->ifd, &c, 1);
     if (nread < 0) {
         return (errno == EAGAIN || errno == EWOULDBLOCK) ? linenoiseEditMore
@@ -1413,10 +1406,11 @@ char *linenoiseEditFeed(struct linenoiseState *l) {
     case CTRL_N: /* ctrl-n */
         linenoiseEditHistoryNext(l, LINENOISE_HISTORY_NEXT);
         break;
-    case ESC: /* escape sequence */
+    case ESC: { /* escape sequence */
         /* Read the next two bytes representing the escape sequence.
          * Use two calls to handle slow terminals returning the two
          * chars at different times. */
+        char seq[3];
         if (read(l->ifd, seq, 1) == -1) break;
         if (read(l->ifd, seq + 1, 1) == -1) break;
 
@@ -1453,24 +1447,7 @@ char *linenoiseEditFeed(struct linenoiseState *l) {
             case 'F': /* End*/ linenoiseEditMoveEnd(l); break;
             }
         }
-        break;
-    default:
-        /* Handle UTF-8 multi-byte sequences. When we receive the first byte
-         * of a multi-byte UTF-8 character, read the remaining bytes to
-         * complete the sequence before inserting. */
-        {
-            char utf8[4];
-            int utf8len = utf8ByteLen(c);
-            utf8[0] = c;
-            if (utf8len > 1) {
-                /* Read remaining bytes of the UTF-8 sequence. */
-                for (int i = 1; i < utf8len; i++) {
-                    if (read(l->ifd, utf8 + i, 1) != 1) break;
-                }
-            }
-            if (linenoiseEditInsert(l, utf8, utf8len)) return NULL;
-        }
-        break;
+    } break;
     case CTRL_U: /* Ctrl+u, delete the whole line. */
         l->buf[0] = '\0';
         l->pos = l->len = 0;
@@ -1494,6 +1471,21 @@ char *linenoiseEditFeed(struct linenoiseState *l) {
     case CTRL_W: /* ctrl+w, delete previous word */
         linenoiseEditDeletePrevWord(l);
         break;
+    default: {
+        /* Handle UTF-8 multi-byte sequences. When we receive the first byte
+         * of a multi-byte UTF-8 character, read the remaining bytes to
+         * complete the sequence before inserting. */
+        char utf8[4];
+        int utf8len = utf8ByteLen(c);
+        utf8[0] = c;
+        if (utf8len > 1) {
+            /* Read remaining bytes of the UTF-8 sequence. */
+            for (int i = 1; i < utf8len; i++) {
+                if (read(l->ifd, utf8 + i, 1) != 1) break;
+            }
+        }
+        if (linenoiseEditInsert(l, utf8, utf8len)) return NULL;
+    } break;
     }
     return linenoiseEditMore;
 }
@@ -1533,11 +1525,11 @@ static char *linenoiseBlockingEdit(int stdin_fd, int stdout_fd, char *buf,
  * on screen for debugging / development purposes. It is implemented
  * by the linenoise_example program using the --keycodes option. */
 void linenoisePrintKeyCodes(void) {
-    char quit[4];
-
     printf("Linenoise key codes debugging mode.\n"
            "Press keys to see scan codes. Type 'quit' at any time to exit.\n");
     if (enableRawMode(STDIN_FILENO) == -1) return;
+
+    char quit[4];
     memset(quit, ' ', 4);
     while (1) {
         char c;

@@ -94,20 +94,31 @@ static inline TokenType identifierType(Lexer *l) {
     } Keyword;
 
     static const Keyword KEYWORDS[] = {
-        {TOKEN_AND, "and", 3},       {TOKEN_CLASS, "class", 5},
-        {TOKEN_ELSE, "else", 4},     {TOKEN_FALSE, "false", 5},
-        {TOKEN_FOR, "for", 3},       {TOKEN_FUN, "fun", 3},
-        {TOKEN_IF, "if", 2},         {TOKEN_NIL, "nil", 3},
-        {TOKEN_OR, "or", 2},         {TOKEN_PRINT, "print", 5},
-        {TOKEN_RETURN, "return", 6}, {TOKEN_SUPER, "super", 5},
-        {TOKEN_THIS, "this", 4},     {TOKEN_TRUE, "true", 4},
-        {TOKEN_VAR, "var", 3},       {TOKEN_WHILE, "while", 5},
-        {TOKEN_BREAK, "break", 5},   {TOKEN_CONTINUE, "continue", 8},
+        {TOKEN_IF, "if", 2},
+        {TOKEN_IN, "in", 2},
+        {TOKEN_OR, "or", 2},
+        {TOKEN_AND, "and", 3},
+        {TOKEN_FOR, "for", 3},
+        {TOKEN_FUN, "fun", 3},
+        {TOKEN_NIL, "nil", 3},
+        {TOKEN_VAR, "var", 3},
+        {TOKEN_ELSE, "else", 4},
+        {TOKEN_THIS, "this", 4},
+        {TOKEN_TRUE, "true", 4},
+        {TOKEN_BREAK, "break", 5},
+        {TOKEN_CLASS, "class", 5},
+        {TOKEN_FALSE, "false", 5},
+        {TOKEN_PRINT, "print", 5},
+        {TOKEN_SUPER, "super", 5},
+        {TOKEN_WHILE, "while", 5},
+        {TOKEN_RETURN, "return", 6},
+        {TOKEN_CONTINUE, "continue", 8},
     };
-    static_assert((sizeof KEYWORDS / sizeof KEYWORDS[0]) == 18,
+#define NUM_KEYWORDS 19
+    static_assert((sizeof KEYWORDS / sizeof KEYWORDS[0]) == NUM_KEYWORDS,
                   "number of keywords changed");
 
-    for (size_t i = 0; i < 18; i++) {
+    for (size_t i = 0; i < NUM_KEYWORDS; i++) {
         Keyword kw = KEYWORDS[i];
         if (len == kw.len && memcmp(l->start, kw.chars, len) == 0) {
             return kw.type;
