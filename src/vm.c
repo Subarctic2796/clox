@@ -187,23 +187,28 @@ static Value iterNextNative(int argc, Value *args) {
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
 
     int index = AS_NUMBER(idx);
-    // update index
-    tableSet(&iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + 1));
+    Value result = FALSE_VAL;
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (OBJ_TYPE(obj)) {
-    case OBJ_STRING: return BOOL_VAL(index < AS_STRING(obj)->length);
-    case OBJ_ARRAY:  return BOOL_VAL(index < AS_ARRAY(obj)->items.cnt);
+    case OBJ_STRING: result = BOOL_VAL(index < AS_STRING(obj)->length); break;
+    case OBJ_ARRAY:  result = BOOL_VAL(index < AS_ARRAY(obj)->items.cnt); break;
     case OBJ_MAP:    {
-        printf("todo iterNextNative[map]\n");
-        abort();
+        Table map = AS_MAP(obj)->items;
+        for (; index < map.cap; index++) {
+            if (!IS_EMPTY(map.entries[index].key)) break;
+        }
+        result = BOOL_VAL(index < map.cap);
     } break;
     default: return NIL_VAL;
     }
 #pragma GCC diagnostic pop
 
-    return NIL_VAL;
+    // update index
+    tableSet(&iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + 1));
+
+    return result;
 
 #undef OBJ_HASH
 #undef IDX_HASH
@@ -230,11 +235,8 @@ static Value iterValueNative(int argc, Value *args) {
     switch (OBJ_TYPE(obj)) {
     case OBJ_STRING: return OBJ_VAL(copyString(AS_CSTRING(obj) + index, 1));
     case OBJ_ARRAY:  return AS_ARRAY(obj)->items.values[index];
-    case OBJ_MAP:    {
-        printf("todo iterValueNative[map]\n");
-        abort();
-    } break;
-    default: return NIL_VAL;
+    case OBJ_MAP:    return AS_MAP(obj)->items.entries[index].value;
+    default:         return NIL_VAL;
     }
 #pragma GCC diagnostic pop
 
@@ -245,17 +247,24 @@ static Value iterValueNative(int argc, Value *args) {
 }
 
 static Value iterIndexNative(int argc, Value *args) {
+#define OBJ_HASH 3343205242
 #define IDX_HASH 1364385362
 
     CHECK_ARITY_NATIVE(0);
 
     ObjInstance *iter = AS_INSTANCE(args[-1]);
     ObjString *_idxStr = tableFindString(&iter->fields, "_index", 6, IDX_HASH);
+    ObjString *_objStr = tableFindString(&iter->fields, "obj", 3, OBJ_HASH);
 
-    Value idx;
+    Value obj, idx;
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
-    return NUMBER_VAL(AS_NUMBER(idx) - 1);
+    tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
 
+    double index = AS_NUMBER(idx) - 1;
+    if (IS_MAP(obj)) return AS_MAP(obj)->items.entries[(int)index].key;
+    return NUMBER_VAL(index);
+
+#undef OBJ_HASH
 #undef IDX_HASH
 }
 
