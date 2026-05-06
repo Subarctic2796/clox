@@ -103,7 +103,7 @@
  *
  */
 
-#include "thirdpary_linenoise.h"
+#include "thirdparty_linenoise.h"
 #include <ctype.h>
 #include <errno.h>
 #include <stdint.h>
