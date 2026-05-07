@@ -98,6 +98,7 @@ typedef struct Compiler {
     int scopeDepth;
 } Compiler;
 
+Lexer lexer = {0};
 Parser parser = {0};
 Compiler *current = NULL;
 ClassCompiler *currentClass = NULL;
@@ -134,7 +135,7 @@ static void advance(void) {
     parser.prv = parser.cur;
 
     for (;;) {
-        parser.cur = scanToken();
+        parser.cur = scanToken(&lexer);
         if (parser.cur.type != TOKEN_ERROR) break;
 
         errorAtCurrent(parser.cur.start);
@@ -346,7 +347,8 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     return 0;
 }
 
-static void endLoop() {
+static void endLoop(int loopStart) {
+    emitLoop(loopStart);
     if (current->loop->end != -1) {
         patchJump(current->loop->end);
         emitPop();
@@ -751,6 +753,10 @@ static inline Token syntheticToken(const char *txt) {
     return token;
 }
 
+static inline uint8_t syntheticIdentifierConst(const char *txt) {
+    return makeConstant(OBJ_VAL(copyString(txt, (int)strnlen(txt, 1024))));
+}
+
 static void super_(bool canAssign) {
     (void)canAssign;
     if (currentClass == NULL) {
@@ -1012,9 +1018,195 @@ static void expressionStmt(void) {
     emitPop();
 }
 
+// this compiles a `for (var ix, i in iterable) { ... }`
+// and reports if it successfully managed to compile it
+static bool forIterStmt() {
+    // a for loop of the form:
+    // for (var ix, i in iterable) {
+    //     print ix;
+    //     print i;
+    // }
+    // will be compiled to something like this:
+    // {
+    //     var it = Iter(iterable);
+    //     var ix;
+    //     var i;
+    //     while (it.next()) {
+    //         ix = it.index();
+    //         i = it.value();
+    //         print ix;
+    //         print i;
+    //     }
+    // }
+
+    // first determine if it even is a for iterable loop and its type
+    // 1) for (var ix, i in iterable) ...
+    // 2) for (var i in iterable) ...
+    //
+    // since we don't know if we are in a forIterStmt we have to
+    // parse carefully as we don't want to set panicMode or hadErr
+    // in the parser as we may still be able to parse a normal for loop
+
+    // the parser is currently pointing at the '(' after the `for` keyword
+    // if the next token is not a `var` then we know it is not a forIterStmt
+    if (!match(TOKEN_VAR)) return false;
+    if (!match(TOKEN_IDENTIFIER)) return false;
+
+    // remember the name incase it is a forIterStmt
+    // we call it first name as if we are in a `for (var ix, i in iter) ...`
+    // then this one will be the index and not the item
+    // const char *firstName = parser.prv.start;
+    // int firstLen = parser.prv.len;
+    Token first = parser.prv;
+
+    // we still don't know if it is a forIterStmt but the odds are slightly
+    // higher we still need to see either a `,` or an `in` token to confirm
+    bool isForIterStmt = false;
+    bool isIndexAndItem = false;
+    if (match(TOKEN_COMMA)) {
+        isForIterStmt = true;
+        // for now are are only allowing `var ix, i` in forIterStmts
+        isIndexAndItem = true;
+    } else if (match(TOKEN_IN)) {
+        isForIterStmt = true;
+    }
+
+    // if we didn't see a `,` or a `in` token then it definitely isn't
+    // so we return
+    if (!isForIterStmt) return false;
+
+    // now we know we are in a forIterLoop so we can actually start
+    // reporting errors, as we won't have to backtrack
+    //
+    // we still have to sync up the 2 possible kinds of forIterStmt's as
+    // if its
+    // `for (var ix, i in iter) ...`
+    //   we are here ^
+    // but if its
+    // `for (var i in iter) ...`
+    //    we are here ^
+    // so we need to get them to both be pointing the iterator expression
+    // so that we can compile it
+
+    // while it may not be a `for (var ix, i in iter) ...` we still need to
+    // have access to the 2nd variable in the rest of the scope
+    Token second = {0};
+    if (isIndexAndItem) {
+        consume(TOKEN_IDENTIFIER,
+                "Expected a second variable name after ',' in the for loop");
+        // save the 2nd variable as we need it
+        // correct it as we now have the 2nd variable
+        Token tmp = first;
+        first = parser.prv;
+        second = tmp;
+        // the parser state is now:
+        // for (var ix, i in iter) ...
+        //                ^
+        // we still need to consume the `in` token
+        consume(TOKEN_IN, "Expect 'in' after variable names in for loop");
+    }
+
+    // the 2 possible types are now synced up
+    // so now we need to construct the iterator
+    // we use the builtin Iter class this will then construct
+    // the iterator object once the expression has been evaluated
+    emitOpArg(OP_GET_GLOBAL, syntheticIdentifierConst("Iter"));
+
+    // so we can now compile the iterator expression and store it in a hidden
+    // variable, the space in the name ensures that it won't collide with
+    // user-define variables
+    expression();
+
+    // make sure to actually construct the the iterator object
+    emitOpArg(OP_CALL, 1);
+
+    // need need to make sure that there is enough space for the `it`, `i`, and
+    // possibly the `ix` local variables
+    int needed = isIndexAndItem ? 3 : 2;
+    if (current->localCount + needed > UINT8_COUNT) {
+        error("Too many local variables in scope. (Not enough space for "
+              "for-loop internal variables");
+    }
+
+    // add `it `
+    addLocal(syntheticToken("it "));
+    markInitialized();
+    int itSlot = current->localCount - 1;
+    // add `i` and initialize it
+    addLocal(first);
+    markInitialized();
+    int iSlot = current->localCount - 1;
+    emitOp(OP_NIL);
+
+    // add `ix`and initialize it if we need it
+    int ixSlot = -1;
+    if (isIndexAndItem) {
+        addLocal(second);
+        markInitialized();
+        ixSlot = current->localCount - 1;
+        emitOp(OP_NIL);
+    }
+
+    // compile the loop body
+    consume(TOKEN_RIGHT_PAREN, "Expect ')' after loop expression");
+
+    Loop loop = {current->loop, curChunk(current)->cnt, 0, -1,
+                 current->scopeDepth};
+    current->loop = &loop;
+
+    // advance the iterator
+    emitOpArg(OP_GET_LOCAL, itSlot);
+    emitOp2Args(OP_INVOKE, syntheticIdentifierConst("next"), 0);
+
+    // test the condition
+    current->loop->end = emitJump(OP_JUMP_IF_FALSE);
+    emitPop();
+
+    // update i
+    emitOpArg(OP_GET_LOCAL, itSlot);
+    emitOp2Args(OP_INVOKE, syntheticIdentifierConst("value"), 0);
+    emitOpArg(OP_SET_LOCAL, iSlot);
+    emitPop();
+
+    // update ix if we need to
+    if (isIndexAndItem) {
+        emitOpArg(OP_GET_LOCAL, itSlot);
+        emitOp2Args(OP_INVOKE, syntheticIdentifierConst("index"), 0);
+        emitOpArg(OP_SET_LOCAL, ixSlot);
+        emitPop();
+    }
+
+    // compile the actual body
+    current->loop->body = curChunk(current)->cnt;
+    statement();
+    endLoop(loop.start);
+    endScope();
+    return true;
+}
+
 static void forStmt(void) {
     beginScope();
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'");
+
+    // there are 2 types of for loops
+    // 1) for (var i = 0; i < n; i++) block
+    // 2) for (var ix, i in iterable) block
+    // we need to see which one it is and compile it correctly
+    // to do this we have to save the state of the lexer and the parser
+    // so that we can revert back to the current position if wasn't a
+    // for loop over an iterable
+
+    Lexer savedLexer = lexer;
+    Parser savedParser = parser;
+    // if it was a for loop over an iterable it will call endScope
+    // and we are done compiling the for loop so we just return
+    if (forIterStmt()) return;
+
+    // otherwise we have to restore the state of the lexer and parse
+    // and try to compile a normal for loop
+    lexer = savedLexer;
+    parser = savedParser;
+
     if (match(TOKEN_SEMICOLON)) {
         // no initializer
     } else if (match(TOKEN_VAR)) {
@@ -1049,9 +1241,7 @@ static void forStmt(void) {
 
     current->loop->body = curChunk(current)->cnt;
     statement();
-    emitLoop(current->loop->start);
-
-    endLoop();
+    endLoop(current->loop->start);
     endScope();
 }
 
@@ -1107,9 +1297,7 @@ static void whileStmt(void) {
     emitPop();
     current->loop->body = curChunk(current)->cnt;
     statement();
-    emitLoop(loop.start);
-
-    endLoop();
+    endLoop(loop.start);
 }
 
 static void synchronize(Parser *parser) {
@@ -1208,7 +1396,7 @@ static void statement(void) {
 }
 
 ObjFn *compile(const char *source) {
-    initLexer(source);
+    initLexer(&lexer, source);
     Compiler compiler = {0};
     initCompiler(&compiler, TYPE_SCRIPT);
 

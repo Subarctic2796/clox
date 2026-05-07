@@ -1,6 +1,8 @@
 #ifndef INCLUDE_CLOX_SCANNER_H_
 #define INCLUDE_CLOX_SCANNER_H_
 
+#include <stddef.h>
+
 typedef enum {
     // Single-character tokens.
     TOKEN_LEFT_PAREN,
@@ -68,7 +70,13 @@ typedef struct {
     int len, line;
 } Token;
 
-void initLexer(const char *source);
-Token scanToken(void);
+typedef struct {
+    const char *start;
+    const char *cur;
+    size_t line;
+} Lexer;
+
+void initLexer(Lexer *lexer, const char *source);
+Token scanToken(Lexer *lexer);
 
 #endif // INCLUDE_CLOX_SCANNER_H_

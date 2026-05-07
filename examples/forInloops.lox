@@ -1,0 +1,6 @@
+fun fn() { return "hello world"; }
+
+for (var ix, i in fn()) {
+    print ix;
+    print i;
+}

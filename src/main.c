@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "thirdpary_linenoise.h"
+#include "thirdparty_linenoise.h"
 #include "vm.h"
 
 static void repl(void) {
