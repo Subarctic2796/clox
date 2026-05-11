@@ -280,7 +280,7 @@ static InterpretResult run(void) {
     } while (false)
 #endif
 
-    uint8_t inst = OP_BREAK;
+    uint8_t inst = OP_NOP;
     for (;;) {
         TRACE_EXECUTION();
         switch (inst = (OpCode)READ_BYTE()) {
@@ -637,6 +637,7 @@ static InterpretResult run(void) {
             (void)POP(); // subclass
         } break;
         case OP_METHOD: defineMethod(READ_CONST()); break;
+        case OP_NOP:    break;
         }
     }
 

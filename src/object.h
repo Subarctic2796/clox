@@ -151,12 +151,6 @@ ObjInstance *newInstance(ObjClass *klass);
 ObjNative *newNative(NativeFn function);
 ObjUpvalue *newUpvalue(Value *slot);
 ObjError *newError(bool recoverable, const char *fmt, ...);
-
-// for when you have dynamically allocated strings
-ObjString *takeString(char *chars, int length);
-// used to extend the lifetime of the string for the vm
-// ie for in the compiler as the tokens are views into the source
-// if its a static string
 ObjString *copyString(const char *chars, int length);
 
 // for string literals

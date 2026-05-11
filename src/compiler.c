@@ -289,7 +289,7 @@ static void endScope(void) {
     }
 }
 static inline int getArgCount(const uint8_t *code, const ValueArray constants,
-                              int ip) {
+                              const int ip) {
     switch ((OpCode)code[ip]) {
     case OP_NOP:
     case OP_NIL:
@@ -355,14 +355,14 @@ static void endLoop(int loopStart) {
     }
 
     int i = current->loop->body;
-    while (i < curChunk(current)->cnt) {
-        if (curChunk(current)->code[i] == OP_NOP) {
-            curChunk(current)->code[i] = OP_JUMP;
+    Chunk *chunk = curChunk(current);
+    while (i < chunk->cnt) {
+        if (chunk->code[i] == OP_NOP) {
+            chunk->code[i] = OP_JUMP;
             patchJump(i + 1);
             i += 3;
         } else {
-            i += 1 + getArgCount(curChunk(current)->code,
-                                 curChunk(current)->constants, i);
+            i += 1 + getArgCount(chunk->code, chunk->constants, i);
         }
     }
 
@@ -746,15 +746,15 @@ static inline void variable(bool canAssign) {
     namedVariable(parser.prv, canAssign);
 }
 
-static inline Token syntheticToken(const char *txt) {
+static inline Token syntheticToken(const char *txt, const int len) {
     Token token = {0};
     token.start = txt;
-    token.len = (int)strnlen(txt, 1024);
+    token.len = len;
     return token;
 }
 
-static inline uint8_t syntheticIdentifierConst(const char *txt) {
-    return makeConstant(OBJ_VAL(copyString(txt, (int)strnlen(txt, 1024))));
+static inline uint8_t syntheticIdentifierConst(const char *txt, const int len) {
+    return makeConstant(OBJ_VAL(copyString(txt, len)));
 }
 
 static void super_(bool canAssign) {
@@ -769,13 +769,13 @@ static void super_(bool canAssign) {
     consume(TOKEN_IDENTIFIER, "Expect superclass method name");
     uint8_t name = identifierConst(&parser.prv);
 
-    namedVariable(syntheticToken("this"), false);
+    namedVariable(syntheticToken("this", 4), false);
     if (match(TOKEN_LEFT_PAREN)) {
         uint8_t argCnt = argumentList();
-        namedVariable(syntheticToken("super"), false);
+        namedVariable(syntheticToken("super", 5), false);
         emitOp2Args(OP_SUPER_INVOKE, name, argCnt);
     } else {
-        namedVariable(syntheticToken("super"), false);
+        namedVariable(syntheticToken("super", 5), false);
         emitOpArg(OP_GET_SUPER, name);
     }
 }
@@ -971,7 +971,7 @@ static void classDecl(void) {
         }
 
         beginScope();
-        addLocal(syntheticToken("super"));
+        addLocal(syntheticToken("super", 5));
         defineVariable(0);
 
         namedVariable(className, false);
@@ -1055,8 +1055,6 @@ static bool forIterStmt() {
     // remember the name incase it is a forIterStmt
     // we call it first name as if we are in a `for (var ix, i in iter) ...`
     // then this one will be the index and not the item
-    // const char *firstName = parser.prv.start;
-    // int firstLen = parser.prv.len;
     Token first = parser.prv;
 
     // we still don't know if it is a forIterStmt but the odds are slightly
@@ -1110,7 +1108,7 @@ static bool forIterStmt() {
     // so now we need to construct the iterator
     // we use the builtin Iter class this will then construct
     // the iterator object once the expression has been evaluated
-    emitOpArg(OP_GET_GLOBAL, syntheticIdentifierConst("Iter"));
+    emitOpArg(OP_GET_GLOBAL, syntheticIdentifierConst("Iter", 4));
 
     // so we can now compile the iterator expression and store it in a hidden
     // variable, the space in the name ensures that it won't collide with
@@ -1125,11 +1123,11 @@ static bool forIterStmt() {
     int needed = isIndexAndItem ? 3 : 2;
     if (current->localCount + needed > UINT8_COUNT) {
         error("Too many local variables in scope. (Not enough space for "
-              "for-loop internal variables");
+              "for-loop internal variables)");
     }
 
     // add `it `
-    addLocal(syntheticToken("it "));
+    addLocal(syntheticToken("it ", 3));
     markInitialized();
     int itSlot = current->localCount - 1;
     // add `i` and initialize it
@@ -1156,7 +1154,7 @@ static bool forIterStmt() {
 
     // advance the iterator
     emitOpArg(OP_GET_LOCAL, itSlot);
-    emitOp2Args(OP_INVOKE, syntheticIdentifierConst("next"), 0);
+    emitOp2Args(OP_INVOKE, syntheticIdentifierConst("next", 4), 0);
 
     // test the condition
     loop.end = emitJump(OP_JUMP_IF_FALSE);
@@ -1164,14 +1162,14 @@ static bool forIterStmt() {
 
     // update i
     emitOpArg(OP_GET_LOCAL, itSlot);
-    emitOp2Args(OP_INVOKE, syntheticIdentifierConst("value"), 0);
+    emitOp2Args(OP_INVOKE, syntheticIdentifierConst("value", 5), 0);
     emitOpArg(OP_SET_LOCAL, iSlot);
     emitPop();
 
     // update ix if we need to
     if (isIndexAndItem) {
         emitOpArg(OP_GET_LOCAL, itSlot);
-        emitOp2Args(OP_INVOKE, syntheticIdentifierConst("index"), 0);
+        emitOp2Args(OP_INVOKE, syntheticIdentifierConst("index", 5), 0);
         emitOpArg(OP_SET_LOCAL, ixSlot);
         emitPop();
     }

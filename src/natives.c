@@ -4,6 +4,8 @@
 #include "memory.h"
 #include "natives.h"
 #include "object.h"
+#include "table.h"
+#include "value.h"
 
 typedef struct {
     const char *name;
@@ -138,9 +140,28 @@ static Value keysNative(int argc, Value *args) {
 
 static Value iterInitNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
-    if (!isIndexable(args[0])) {
+    if (!(isIndexable(args[0]) || IS_INSTANCE(args[0]))) {
         return ERROR_VAL(
             false, "Can only create iterators from strings, arrays, and maps");
+    }
+
+    if (IS_INSTANCE(args[0])) {
+        ObjInstance *obj = AS_INSTANCE(args[0]);
+        Table methods = obj->klass->methods;
+        Value dummy;
+        if (!tableGet(&methods, OBJ_VAL(CONST_STRING("next")), &dummy)) {
+            return ERROR_VAL(
+                false, "Object must have a next method to be an iterator");
+        }
+        if (!tableGet(&methods, OBJ_VAL(CONST_STRING("value")), &dummy)) {
+            return ERROR_VAL(
+                false, "Object must have a valu method to be an iterator");
+        }
+        if (!tableGet(&methods, OBJ_VAL(CONST_STRING("index")), &dummy)) {
+            return ERROR_VAL(
+                false, "Object must have a index method to be an iterator");
+        }
+        return OBJ_VAL(obj);
     }
 
     ObjInstance *inst = AS_INSTANCE(args[-1]);
