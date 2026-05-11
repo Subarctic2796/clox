@@ -53,5 +53,8 @@ void freeVM(void);
 InterpretResult interpret(const char *source);
 static inline void pushRoot(Value value) { vm.tempRoots[vm.tempCnt++] = value; }
 static inline void popRoot(void) { vm.tempCnt--; }
+static inline void push(Value value) { *vm.sp++ = value; }
+static inline Value pop(void) { return *(--vm.sp); }
+static inline Value peek(int dist) { return vm.sp[-1 - dist]; }
 
 #endif // INCLUDE_CLOX_VM_H_
