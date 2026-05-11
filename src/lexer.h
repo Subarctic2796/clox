@@ -5,12 +5,12 @@
 
 typedef enum {
     // Single-character tokens.
-    TOKEN_LEFT_PAREN,
-    TOKEN_RIGHT_PAREN,
-    TOKEN_LEFT_BRACE,
-    TOKEN_RIGHT_BRACE,
-    TOKEN_LEFT_SQR,
-    TOKEN_RIGHT_SQR,
+    TOKEN_LPAREN,
+    TOKEN_RPAREN,
+    TOKEN_LBRACE,
+    TOKEN_RBRACE,
+    TOKEN_LSQR,
+    TOKEN_RSQR,
     TOKEN_COMMA,
     TOKEN_DOT,
     TOKEN_SEMICOLON,

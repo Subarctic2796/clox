@@ -17,8 +17,9 @@
 #endif
 
 typedef struct {
-    Token prv, cur;
     bool hadError, panicMode;
+    Token prv, cur;
+    Lexer lexer;
 } Parser;
 
 typedef enum {
@@ -98,16 +99,15 @@ typedef struct Compiler {
     int scopeDepth;
 } Compiler;
 
-Lexer lexer = {0};
 Parser parser = {0};
 Compiler *current = NULL;
 ClassCompiler *currentClass = NULL;
 
-static inline Chunk *curChunk(Compiler *compiler) {
+static inline Chunk *curChunk(const Compiler *compiler) {
     return &compiler->fn->chunk;
 }
 
-static void errorAt(Token *token, const char *message) {
+static void errorAt(const Token *token, const char *message) {
     if (parser.panicMode) return;
 
     parser.panicMode = true;
@@ -135,7 +135,7 @@ static void advance(void) {
     parser.prv = parser.cur;
 
     for (;;) {
-        parser.cur = scanToken(&lexer);
+        parser.cur = scanToken(&parser.lexer);
         if (parser.cur.type != TOKEN_ERROR) break;
 
         errorAtCurrent(parser.cur.start);
@@ -435,7 +435,7 @@ static int resolveUpvalue(Compiler *compiler, Token *name) {
     return -1;
 }
 
-static void addLocal(Token name) {
+static void addLocal(const Token name) {
     if (current->localCount == UINT8_COUNT) {
         error("Too many local variables in function");
         return;
@@ -473,7 +473,7 @@ static uint8_t parseVariable(const char *errorMsg) {
     return identifierConst(&parser.prv);
 }
 
-static void markInitialized(void) {
+static void markInitialized() {
     if (current->scopeDepth == 0) return;
     current->locals[current->localCount - 1].depth = current->scopeDepth;
 }
@@ -491,14 +491,14 @@ static void defineVariable(uint8_t globalIdx) {
 
 static uint8_t argumentList(void) {
     uint8_t argCnt = 0;
-    if (!check(TOKEN_RIGHT_PAREN)) {
+    if (!check(TOKEN_RPAREN)) {
         do {
             expression();
             if (argCnt == 255) error("Can't have more than 255 arguments");
             argCnt++;
         } while (match(TOKEN_COMMA));
     }
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after arguments");
+    consume(TOKEN_RPAREN, "Expect ')' after arguments");
     return argCnt;
 }
 
@@ -569,7 +569,7 @@ static void dot(bool canAssign) {
         SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
     } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
         SHORT_HAND_ASSIGNMENT(OP_MOD);
-    } else if (match(TOKEN_LEFT_PAREN)) {
+    } else if (match(TOKEN_LPAREN)) {
         uint8_t argCnt = argumentList();
         emitOp2Args(OP_INVOKE, name, argCnt);
     } else {
@@ -594,7 +594,7 @@ static void literal(bool canAssign) {
 static void grouping(bool canAssign) {
     (void)canAssign;
     expression();
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after expression");
+    consume(TOKEN_RPAREN, "Expect ')' after expression");
 }
 
 static void number(bool canAssign) {
@@ -625,10 +625,10 @@ static void array(bool canAssign) {
     (void)canAssign;
 
     int cnt = 0;
-    if (!check(TOKEN_RIGHT_SQR)) {
+    if (!check(TOKEN_RSQR)) {
         do {
             // trailing comma
-            if (check(TOKEN_RIGHT_SQR)) break;
+            if (check(TOKEN_RSQR)) break;
 
             parsePrecedence(PREC_OR);
 
@@ -639,7 +639,7 @@ static void array(bool canAssign) {
         } while (match(TOKEN_COMMA));
     }
 
-    consume(TOKEN_RIGHT_SQR, "Expect ']' after array literal");
+    consume(TOKEN_RSQR, "Expect ']' after array literal");
 
     emitOpArg(OP_BUILD_ARRAY, cnt);
 }
@@ -648,10 +648,10 @@ static void map(bool canAssign) {
     (void)canAssign;
 
     int cnt = 0;
-    if (!check(TOKEN_RIGHT_BRACE)) {
+    if (!check(TOKEN_RBRACE)) {
         do {
             // trailing comma
-            if (check(TOKEN_RIGHT_BRACE)) break;
+            if (check(TOKEN_RBRACE)) break;
 
             parsePrecedence(PREC_OR); // key
             consume(TOKEN_COLON, "Expect ':' after map key");
@@ -664,7 +664,7 @@ static void map(bool canAssign) {
         } while (match(TOKEN_COMMA));
     }
 
-    consume(TOKEN_RIGHT_BRACE, "Expect '}' after map literal");
+    consume(TOKEN_RBRACE, "Expect '}' after map literal");
 
     emitOpArg(OP_BUILD_MAP, cnt);
 }
@@ -676,7 +676,7 @@ static void subscript(bool canAssign) {
     } while (0)
 
     parsePrecedence(PREC_OR);
-    consume(TOKEN_RIGHT_SQR, "Expect ']' after index");
+    consume(TOKEN_RSQR, "Expect ']' after index");
 
     // TODO: need to add +=, -=, etc
     if (canAssign && match(TOKEN_EQ)) {
@@ -770,7 +770,7 @@ static void super_(bool canAssign) {
     uint8_t name = identifierConst(&parser.prv);
 
     namedVariable(syntheticToken("this", 4), false);
-    if (match(TOKEN_LEFT_PAREN)) {
+    if (match(TOKEN_LPAREN)) {
         uint8_t argCnt = argumentList();
         namedVariable(syntheticToken("super", 5), false);
         emitOp2Args(OP_SUPER_INVOKE, name, argCnt);
@@ -816,12 +816,12 @@ static void lambda(bool canAssign) {
 }
 
 ParseRule rules[] = {
-    [TOKEN_LEFT_PAREN] = {grouping, call, PREC_CALL},
-    [TOKEN_RIGHT_PAREN] = {NULL, NULL, PREC_NONE},
-    [TOKEN_LEFT_BRACE] = {map, NULL, PREC_NONE},
-    [TOKEN_RIGHT_BRACE] = {NULL, NULL, PREC_NONE},
-    [TOKEN_LEFT_SQR] = {array, subscript, PREC_SUBSCRIPT},
-    [TOKEN_RIGHT_SQR] = {NULL, NULL, PREC_NONE},
+    [TOKEN_LPAREN] = {grouping, call, PREC_CALL},
+    [TOKEN_RPAREN] = {NULL, NULL, PREC_NONE},
+    [TOKEN_LBRACE] = {map, NULL, PREC_NONE},
+    [TOKEN_RBRACE] = {NULL, NULL, PREC_NONE},
+    [TOKEN_LSQR] = {array, subscript, PREC_SUBSCRIPT},
+    [TOKEN_RSQR] = {NULL, NULL, PREC_NONE},
     [TOKEN_COMMA] = {NULL, NULL, PREC_NONE},
     [TOKEN_DOT] = {NULL, dot, PREC_CALL},
     [TOKEN_SEMICOLON] = {NULL, NULL, PREC_NONE},
@@ -898,11 +898,11 @@ static void parsePrecedence(Precedence precedence) {
 static inline void expression(void) { parsePrecedence(PREC_ASSIGNMENT); }
 
 static void block(void) {
-    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+    while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
         declaration();
     }
 
-    consume(TOKEN_RIGHT_BRACE, "Expect '}' after block");
+    consume(TOKEN_RBRACE, "Expect '}' after block");
 }
 
 static void function(FunctionType type) {
@@ -910,8 +910,8 @@ static void function(FunctionType type) {
     initCompiler(&compiler, type);
     beginScope();
 
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after function name");
-    if (!check(TOKEN_RIGHT_PAREN)) {
+    consume(TOKEN_LPAREN, "Expect '(' after function name");
+    if (!check(TOKEN_RPAREN)) {
         do {
             current->fn->arity++;
             if (current->fn->arity > 255) {
@@ -921,8 +921,8 @@ static void function(FunctionType type) {
             defineVariable(constIdx);
         } while (match(TOKEN_COMMA));
     }
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after parameters");
-    consume(TOKEN_LEFT_BRACE, "Expect '{' before function body");
+    consume(TOKEN_RPAREN, "Expect ')' after parameters");
+    consume(TOKEN_LBRACE, "Expect '{' before function body");
     block();
 
     // don't need to call endScope as endCompiler
@@ -980,11 +980,11 @@ static void classDecl(void) {
     }
 
     namedVariable(className, false);
-    consume(TOKEN_LEFT_BRACE, "Expect '{' before class body");
-    while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
+    consume(TOKEN_LBRACE, "Expect '{' before class body");
+    while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
         method();
     }
-    consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body");
+    consume(TOKEN_RBRACE, "Expect '}' after class body");
     emitPop();
 
     if (classCompiler.hasSuperClass) endScope();
@@ -1146,7 +1146,7 @@ static bool forIterStmt() {
     }
 
     // compile the loop body
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after loop expression");
+    consume(TOKEN_RPAREN, "Expect ')' after loop expression");
 
     Loop loop = {current->loop, curChunk(current)->cnt, 0, -1,
                  current->scopeDepth};
@@ -1184,7 +1184,7 @@ static bool forIterStmt() {
 
 static void forStmt(void) {
     beginScope();
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'for'");
+    consume(TOKEN_LPAREN, "Expect '(' after 'for'");
 
     // there are 2 types of for loops
     // 1) for (var i = 0; i < n; i++) block
@@ -1194,7 +1194,7 @@ static void forStmt(void) {
     // so that we can revert back to the current position if wasn't a
     // for loop over an iterable
 
-    Lexer savedLexer = lexer;
+    Lexer savedLexer = parser.lexer;
     Parser savedParser = parser;
     // if it was a for loop over an iterable it will call endScope
     // and we are done compiling the for loop so we just return
@@ -1202,7 +1202,7 @@ static void forStmt(void) {
 
     // otherwise we have to restore the state of the lexer and parse
     // and try to compile a normal for loop
-    lexer = savedLexer;
+    parser.lexer = savedLexer;
     parser = savedParser;
 
     if (match(TOKEN_SEMICOLON)) {
@@ -1225,12 +1225,12 @@ static void forStmt(void) {
         emitPop(); // cond
     }
 
-    if (!match(TOKEN_RIGHT_PAREN)) {
+    if (!match(TOKEN_RPAREN)) {
         int bodyJmpIdx = emitJump(OP_JUMP);
         int incrStartIdx = curChunk(current)->cnt;
         expression();
         emitPop();
-        consume(TOKEN_RIGHT_PAREN, "Expect ')' after clauses");
+        consume(TOKEN_RPAREN, "Expect ')' after clauses");
 
         emitLoop(loop.start);
         loop.start = incrStartIdx;
@@ -1244,9 +1244,9 @@ static void forStmt(void) {
 }
 
 static void ifStmt(void) {
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after if");
+    consume(TOKEN_LPAREN, "Expect '(' after if");
     expression();
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
+    consume(TOKEN_RPAREN, "Expect ')' after condition");
 
     int thenJumpIdx = emitJump(OP_JUMP_IF_FALSE);
     emitPop(); // true branch pop
@@ -1287,9 +1287,9 @@ static void whileStmt(void) {
                  current->scopeDepth};
     current->loop = &loop;
 
-    consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'");
+    consume(TOKEN_LPAREN, "Expect '(' after 'while'");
     expression();
-    consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
+    consume(TOKEN_RPAREN, "Expect ')' after condition");
 
     loop.end = emitJump(OP_JUMP_IF_FALSE);
     emitPop();
@@ -1359,7 +1359,7 @@ static void statement(void) {
         returnStmt();
     } else if (match(TOKEN_WHILE)) {
         whileStmt();
-    } else if (match(TOKEN_LEFT_BRACE)) {
+    } else if (match(TOKEN_LBRACE)) {
         beginScope();
         block();
         endScope();
@@ -1394,7 +1394,7 @@ static void statement(void) {
 }
 
 ObjFn *compile(const char *source) {
-    initLexer(&lexer, source);
+    initLexer(&parser.lexer, source);
     Compiler compiler = {0};
     initCompiler(&compiler, TYPE_SCRIPT);
 

@@ -165,12 +165,12 @@ Token scanToken(Lexer *lexer) {
     if (isDigit(c)) return makeNumber(lexer);
 
     switch (c) {
-    case '(': return makeToken(lexer, TOKEN_LEFT_PAREN);
-    case ')': return makeToken(lexer, TOKEN_RIGHT_PAREN);
-    case '{': return makeToken(lexer, TOKEN_LEFT_BRACE);
-    case '}': return makeToken(lexer, TOKEN_RIGHT_BRACE);
-    case '[': return makeToken(lexer, TOKEN_LEFT_SQR);
-    case ']': return makeToken(lexer, TOKEN_RIGHT_SQR);
+    case '(': return makeToken(lexer, TOKEN_LPAREN);
+    case ')': return makeToken(lexer, TOKEN_RPAREN);
+    case '{': return makeToken(lexer, TOKEN_LBRACE);
+    case '}': return makeToken(lexer, TOKEN_RBRACE);
+    case '[': return makeToken(lexer, TOKEN_LSQR);
+    case ']': return makeToken(lexer, TOKEN_RSQR);
     case ';': return makeToken(lexer, TOKEN_SEMICOLON);
     case ':': return makeToken(lexer, TOKEN_COLON);
     case ',': return makeToken(lexer, TOKEN_COMMA);
