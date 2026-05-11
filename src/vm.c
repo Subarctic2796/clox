@@ -57,7 +57,7 @@ void initVM(void) {
     initTable(&vm.globals);
     initTable(&vm.strings);
 
-    vm.initString = copyString("init", 4);
+    vm.initString = CONST_STRING("init");
 
     defineAllNatives(&vm);
 }

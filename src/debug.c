@@ -60,7 +60,7 @@ int disassembleInst(Chunk *chunk, int offset) {
     OpCode inst = (OpCode)chunk->code[offset];
     switch (inst) {
     case OP_CONSTANT:   return constantInst("OP_CONSTANT", chunk, offset);
-    case OP_BREAK:      return simpleInst("OP_BREAK", offset);
+    case OP_NOP:        return simpleInst("OP_NOP", offset);
     case OP_NIL:        return simpleInst("OP_NIL", offset);
     case OP_FALSE:      return simpleInst("OP_FALSE", offset);
     case OP_GET_INDEX:  return simpleInst("OP_GET_INDEX", offset);

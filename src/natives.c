@@ -145,9 +145,9 @@ static Value iterInitNative(int argc, Value *args) {
 
     ObjInstance *inst = AS_INSTANCE(args[-1]);
 
-    ObjString *obj = copyString("obj", 3);
+    ObjString *obj = CONST_STRING("obj");
     pushRoot(OBJ_VAL(obj));
-    ObjString *idx = copyString("_index", 6);
+    ObjString *idx = CONST_STRING("_index");
     pushRoot(OBJ_VAL(idx));
 
     // add obj and _index to the instance's fields

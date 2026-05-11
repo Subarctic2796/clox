@@ -110,7 +110,7 @@ ObjString *takeString(char *chars, int length) {
     return allocateString(chars, length, hash);
 }
 
-// used to extend the lifetime of the string
+// used to extend the lifetime of the string for the vm
 // ie for in the compiler as the tokens are views into the source
 // if its a static string
 ObjString *copyString(const char *chars, int length) {

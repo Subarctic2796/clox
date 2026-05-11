@@ -291,6 +291,7 @@ static void endScope(void) {
 static inline int getArgCount(const uint8_t *code, const ValueArray constants,
                               int ip) {
     switch ((OpCode)code[ip]) {
+    case OP_NOP:
     case OP_NIL:
     case OP_TRUE:
     case OP_FALSE:
@@ -307,7 +308,6 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     case OP_NEGATE:
     case OP_CLOSE_UPVALUE:
     case OP_RETURN:
-    case OP_BREAK:
     case OP_PRINT:
     case OP_INHERIT:
     case OP_GET_INDEX:
@@ -356,7 +356,7 @@ static void endLoop(int loopStart) {
 
     int i = current->loop->body;
     while (i < curChunk(current)->cnt) {
-        if (curChunk(current)->code[i] == OP_BREAK) {
+        if (curChunk(current)->code[i] == OP_NOP) {
             curChunk(current)->code[i] = OP_JUMP;
             patchJump(i + 1);
             i += 3;
@@ -1159,7 +1159,7 @@ static bool forIterStmt() {
     emitOp2Args(OP_INVOKE, syntheticIdentifierConst("next"), 0);
 
     // test the condition
-    current->loop->end = emitJump(OP_JUMP_IF_FALSE);
+    loop.end = emitJump(OP_JUMP_IF_FALSE);
     emitPop();
 
     // update i
@@ -1177,7 +1177,7 @@ static bool forIterStmt() {
     }
 
     // compile the actual body
-    current->loop->body = curChunk(current)->cnt;
+    loop.body = curChunk(current)->cnt;
     statement();
     endLoop(loop.start);
     endScope();
@@ -1223,7 +1223,7 @@ static void forStmt(void) {
         consume(TOKEN_SEMICOLON, "Expect ';' after loop condition");
 
         // jmp out of the loop if cond is false
-        current->loop->end = emitJump(OP_JUMP_IF_FALSE);
+        loop.end = emitJump(OP_JUMP_IF_FALSE);
         emitPop(); // cond
     }
 
@@ -1234,14 +1234,14 @@ static void forStmt(void) {
         emitPop();
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after clauses");
 
-        emitLoop(current->loop->start);
-        current->loop->start = incrStartIdx;
+        emitLoop(loop.start);
+        loop.start = incrStartIdx;
         patchJump(bodyJmpIdx);
     }
 
-    current->loop->body = curChunk(current)->cnt;
+    loop.body = curChunk(current)->cnt;
     statement();
-    endLoop(current->loop->start);
+    endLoop(loop.start);
     endScope();
 }
 
@@ -1293,9 +1293,9 @@ static void whileStmt(void) {
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition");
 
-    current->loop->end = emitJump(OP_JUMP_IF_FALSE);
+    loop.end = emitJump(OP_JUMP_IF_FALSE);
     emitPop();
-    current->loop->body = curChunk(current)->cnt;
+    loop.body = curChunk(current)->cnt;
     statement();
     endLoop(loop.start);
 }
@@ -1376,7 +1376,7 @@ static void statement(void) {
         // discard any locals made in the loop
         discardLocals(current->loop->scopeDepth);
 
-        emitJump(OP_BREAK);
+        emitJump(OP_NOP);
     } else if (match(TOKEN_CONTINUE)) {
         if (current->loop == NULL) {
             error("Can only use 'continue' inside of loops");

@@ -154,8 +154,13 @@ ObjError *newError(bool recoverable, const char *fmt, ...);
 
 // for when you have dynamically allocated strings
 ObjString *takeString(char *chars, int length);
-// for string literals
+// used to extend the lifetime of the string for the vm
+// ie for in the compiler as the tokens are views into the source
+// if its a static string
 ObjString *copyString(const char *chars, int length);
+
+// for string literals
+#define CONST_STRING(txt) copyString(txt, sizeof(txt) - 1)
 
 void printObject(Value value);
 ObjString *objectToString(Value value);

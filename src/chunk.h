@@ -5,24 +5,13 @@
 #include "value.h"
 
 typedef enum {
-    OP_BREAK,
-    OP_CONSTANT,
+    // 0 args
+    OP_NOP,
     OP_NIL,
     OP_TRUE,
     OP_FALSE,
     OP_POP, // easy optimization OP_POPN, pop n slots at once
-    OP_DEFINE_GLOBAL,
-    OP_GET_GLOBAL,
-    OP_SET_GLOBAL,
-    OP_GET_INDEX,
-    OP_SET_INDEX,
-    OP_GET_LOCAL,
-    OP_SET_LOCAL,
-    OP_GET_UPVALUE,
-    OP_SET_UPVALUE,
-    OP_GET_PROPERTY,
-    OP_SET_PROPERTY,
-    OP_GET_SUPER,
+    OP_INHERIT,
     OP_EQUAL,
     OP_GREATER,
     OP_LESS,
@@ -34,20 +23,38 @@ typedef enum {
     OP_NOT,
     OP_NEGATE,
     OP_PRINT,
+    OP_CLOSE_UPVALUE,
+    OP_RETURN,
+    OP_GET_INDEX,
+    OP_SET_INDEX,
+
+    // 1 args
+    OP_CONSTANT,
+    OP_GET_PROPERTY,
+    OP_SET_PROPERTY,
+    OP_BUILD_ARRAY,
+    OP_BUILD_MAP,
+    OP_METHOD,
+    OP_DEFINE_GLOBAL,
+    OP_GET_GLOBAL,
+    OP_SET_GLOBAL,
+    OP_GET_LOCAL,
+    OP_SET_LOCAL,
+    OP_GET_UPVALUE,
+    OP_SET_UPVALUE,
+    OP_GET_SUPER,
+
+    // 2 args
     OP_JUMP,
     OP_JUMP_IF_FALSE,
     OP_LOOP,
+    OP_CLASS,
     OP_CALL,
     OP_INVOKE,
     OP_SUPER_INVOKE,
+
+    // n args
     OP_CLOSURE,
-    OP_CLOSE_UPVALUE,
-    OP_RETURN,
-    OP_BUILD_ARRAY,
-    OP_BUILD_MAP,
-    OP_CLASS,
-    OP_INHERIT,
-    OP_METHOD,
 } OpCode;
 
 typedef struct {
