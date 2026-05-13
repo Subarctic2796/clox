@@ -9,11 +9,13 @@
 
 typedef struct {
     const char *name;
+    const int len;
     const NativeFn fn;
 } NativeDecl;
 
 typedef struct {
     const char *name;
+    const int len;
     const int numFns;
     const NativeDecl *fns;
 } NativeClassDecl;
@@ -115,27 +117,6 @@ static Value typeofNative(int argc, Value *args) {
     }
     const char *str = typeofValue(v);
     return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
-}
-
-static Value keysNative(int argc, Value *args) {
-    CHECK_ARITY_NATIVE(1);
-    Value v = args[0];
-    if (!IS_MAP(v)) {
-        return ERROR_VAL(false, "'keys' can only be used on maps, got %s",
-                         typeofValue(v));
-    }
-
-    Table map = AS_MAP(v)->items;
-
-    ObjArray *arr = newArray();
-    pushRoot(OBJ_VAL(arr));
-    for (int i = 0; i < map.cap; i++) {
-        Entry entry = map.entries[i];
-        if (IS_EMPTY(entry.key)) continue;
-        appendToArray(arr, entry.key);
-    }
-    popRoot();
-    return OBJ_VAL(arr);
 }
 
 static Value iterInitNative(int argc, Value *args) {
@@ -279,7 +260,7 @@ static Value iterIndexNative(int argc, Value *args) {
 
 static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
     // add class to globals
-    ObjString *kname = copyString(decl.name, (int)strnlen(decl.name, 1024));
+    ObjString *kname = copyString(decl.name, decl.len);
     pushRoot(OBJ_VAL(kname));
     ObjClass *klass = newClass(kname);
     pushRoot(OBJ_VAL(klass));
@@ -288,7 +269,7 @@ static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
     // add native functions to the class
     for (int i = 0; i < decl.numFns; i++) {
         NativeDecl fn = decl.fns[i];
-        ObjString *fname = copyString(fn.name, (int)strnlen(fn.name, 1024));
+        ObjString *fname = copyString(fn.name, fn.len);
         pushRoot(OBJ_VAL(fname));
         ObjNative *native = newNative(fn.fn);
         pushRoot(OBJ_VAL(native));
@@ -302,8 +283,7 @@ static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
 }
 
 static void defineNative(VM *vm, const NativeDecl decl) {
-    ObjString *nativeName =
-        copyString(decl.name, (int)strnlen(decl.name, 1024));
+    ObjString *nativeName = copyString(decl.name, decl.len);
     pushRoot(OBJ_VAL(nativeName));
     ObjNative *fn = newNative(decl.fn);
     pushRoot(OBJ_VAL(fn));
@@ -314,10 +294,9 @@ static void defineNative(VM *vm, const NativeDecl decl) {
 
 void defineAllNatives(VM *vm) {
     static const NativeDecl NATIVE_FNS[] = {
-        {"clock", clockNative},   {"append", appendNative},
-        {"delete", deleteNative}, {"len", lenNative},
-        {"error", errorNative},   {"typeof", typeofNative},
-        {"keys", keysNative},
+        {"clock", 5, clockNative},   {"append", 6, appendNative},
+        {"delete", 6, deleteNative}, {"len", 3, lenNative},
+        {"error", 5, errorNative},   {"typeof", 6, typeofNative},
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_FNS); i++) {
@@ -325,14 +304,14 @@ void defineAllNatives(VM *vm) {
     }
 
     static const NativeDecl ITER_FNS[] = {
-        {"init", iterInitNative},
-        {"next", iterNextNative},
-        {"value", iterValueNative},
-        {"index", iterIndexNative},
+        {"init", 4, iterInitNative},
+        {"next", 4, iterNextNative},
+        {"value", 5, iterValueNative},
+        {"index", 5, iterIndexNative},
     };
 
     static const NativeClassDecl NATIVE_CLASSES[] = {
-        {"Iter", 4, ITER_FNS},
+        {"Iter", 5, 4, ITER_FNS},
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_CLASSES); i++) {
