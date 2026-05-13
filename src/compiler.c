@@ -544,38 +544,18 @@ static void call(bool canAssign) {
 }
 
 static void dot(bool canAssign) {
-#define SHORT_HAND_ASSIGNMENT(op)                                              \
-    do {                                                                       \
-        emitOpArg(OP_GET_LOCAL, 0);                                            \
-        emitOpArg(OP_GET_PROPERTY, name);                                      \
-        expression();                                                          \
-        emitOp(op);                                                            \
-        emitOpArg(OP_SET_PROPERTY, name);                                      \
-    } while (0)
-
     consume(TOKEN_IDENTIFIER, "Expect property name after '.'");
     uint8_t name = identifierConst(&parser.prv);
 
     if (canAssign && match(TOKEN_EQ)) {
         expression();
         emitOpArg(OP_SET_PROPERTY, name);
-    } else if (canAssign && match(TOKEN_PLUS_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_ADD);
-    } else if (canAssign && match(TOKEN_MINUS_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_SUBTRACT);
-    } else if (canAssign && match(TOKEN_SLASH_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_DIVIDE);
-    } else if (canAssign && match(TOKEN_STAR_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
-    } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_MOD);
     } else if (match(TOKEN_LPAREN)) {
         uint8_t argCnt = argumentList();
         emitOp2Args(OP_INVOKE, name, argCnt);
     } else {
         emitOpArg(OP_GET_PROPERTY, name);
     }
-#undef SHORT_HAND_ASSIGNMENT
 }
 
 static void literal(bool canAssign) {
@@ -670,44 +650,18 @@ static void map(bool canAssign) {
 }
 
 static void subscript(bool canAssign) {
-#define SHORT_HAND_ASSIGNMENT(op)                                              \
-    do {                                                                       \
-        error("Cannot do index updating yet");                                 \
-    } while (0)
-
     parsePrecedence(PREC_OR);
     consume(TOKEN_RSQR, "Expect ']' after index");
 
-    // TODO: need to add +=, -=, etc
     if (canAssign && match(TOKEN_EQ)) {
         expression();
         emitOp(OP_SET_INDEX);
-    } else if (canAssign && match(TOKEN_PLUS_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_ADD);
-    } else if (canAssign && match(TOKEN_MINUS_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_SUBTRACT);
-    } else if (canAssign && match(TOKEN_SLASH_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_DIVIDE);
-    } else if (canAssign && match(TOKEN_STAR_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
-    } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_MOD);
     } else {
         emitOp(OP_GET_INDEX);
     }
-
-#undef SHORT_HAND_ASSIGNMENT
 }
 
 static void namedVariable(Token name, bool canAssign) {
-#define SHORT_HAND_ASSIGNMENT(op)                                              \
-    do {                                                                       \
-        emitOpArg(getOp, argIdx);                                              \
-        expression();                                                          \
-        emitOp(op);                                                            \
-        emitOpArg(setOp, argIdx);                                              \
-    } while (0)
-
     uint8_t getOp = OP_GET_GLOBAL, setOp = OP_SET_GLOBAL;
     int argIdx = resolveLocal(current, &name);
     if (argIdx != -1) {
@@ -725,21 +679,9 @@ static void namedVariable(Token name, bool canAssign) {
     if (canAssign && match(TOKEN_EQ)) {
         expression();
         emitOpArg(setOp, argIdx);
-    } else if (canAssign && match(TOKEN_PLUS_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_ADD);
-    } else if (canAssign && match(TOKEN_MINUS_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_SUBTRACT);
-    } else if (canAssign && match(TOKEN_SLASH_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_DIVIDE);
-    } else if (canAssign && match(TOKEN_STAR_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_MULTIPLY);
-    } else if (canAssign && match(TOKEN_PERCENT_EQ)) {
-        SHORT_HAND_ASSIGNMENT(OP_MOD);
     } else {
         emitOpArg(getOp, argIdx);
     }
-
-#undef OP_EQ_ASSIGNMET
 }
 
 static inline void variable(bool canAssign) {
@@ -839,11 +781,6 @@ ParseRule rules[] = {
     [TOKEN_GTEQ] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LT] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LTEQ] = {NULL, binary, PREC_COMPARISON},
-    [TOKEN_MINUS_EQ] = {NULL, binary, PREC_NONE},
-    [TOKEN_PLUS_EQ] = {NULL, binary, PREC_NONE},
-    [TOKEN_SLASH_EQ] = {NULL, binary, PREC_NONE},
-    [TOKEN_STAR_EQ] = {NULL, binary, PREC_NONE},
-    [TOKEN_PERCENT_EQ] = {NULL, binary, PREC_NONE},
     [TOKEN_IDENTIFIER] = {variable, NULL, PREC_NONE},
     [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
@@ -1130,7 +1067,7 @@ static bool forIterStmt() {
     addLocal(syntheticToken("it ", 3));
     markInitialized();
     int itSlot = current->localCount - 1;
-    // add `i` and initialize it
+    // add `i` or `ix` and initialize it
     addLocal(first);
     markInitialized();
     int iSlot = current->localCount - 1;

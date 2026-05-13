@@ -29,11 +29,7 @@ typedef enum {
     TOKEN_GTEQ,
     TOKEN_LT,
     TOKEN_LTEQ,
-    TOKEN_MINUS_EQ,
-    TOKEN_PLUS_EQ,
-    TOKEN_SLASH_EQ,
-    TOKEN_STAR_EQ,
-    TOKEN_PERCENT_EQ,
+    TOKEN_ERCENT_EQ,
     // Literals.
     TOKEN_IDENTIFIER,
     TOKEN_STRING,

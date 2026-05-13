@@ -175,12 +175,11 @@ Token scanToken(Lexer *lexer) {
     case ':': return makeToken(lexer, TOKEN_COLON);
     case ',': return makeToken(lexer, TOKEN_COMMA);
     case '.': return makeToken(lexer, TOKEN_DOT);
-    case '-': return matchMakeToken(lexer, '=', TOKEN_MINUS_EQ, TOKEN_MINUS);
-    case '/': return matchMakeToken(lexer, '=', TOKEN_SLASH_EQ, TOKEN_SLASH);
-    case '*': return matchMakeToken(lexer, '=', TOKEN_STAR_EQ, TOKEN_STAR);
-    case '+': return matchMakeToken(lexer, '=', TOKEN_PLUS_EQ, TOKEN_PLUS);
-    case '%':
-        return matchMakeToken(lexer, '=', TOKEN_PERCENT_EQ, TOKEN_PERCENT);
+    case '-': return makeToken(lexer, TOKEN_MINUS);
+    case '/': return makeToken(lexer, TOKEN_SLASH);
+    case '*': return makeToken(lexer, TOKEN_STAR);
+    case '+': return makeToken(lexer, TOKEN_PLUS);
+    case '%': return makeToken(lexer, TOKEN_PERCENT);
     case '!': return matchMakeToken(lexer, '=', TOKEN_NEQ, TOKEN_BANG);
     case '=': return matchMakeToken(lexer, '=', TOKEN_EQEQ, TOKEN_EQ);
     case '<': return matchMakeToken(lexer, '=', TOKEN_LTEQ, TOKEN_LT);
