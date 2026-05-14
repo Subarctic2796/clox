@@ -304,7 +304,7 @@ static InterpretResult run(void) {
             switch (OBJ_TYPE(PEEK(1))) {
             case OBJ_STRING: {
                 Value index_ = POP();
-                ObjString *str = AS_STRING(POP());
+                ObjString *str = AS_STRING(PEEK(0));
 
                 int index = isValidIndex(index_, str->length);
                 if (index == -1) {
@@ -319,6 +319,7 @@ static InterpretResult run(void) {
                 }
 
                 ObjString *result = copyString(str->chars + index, 1);
+                (void)POP(); // the string
                 PUSH(OBJ_VAL(result));
             } break;
             case OBJ_ARRAY: {
@@ -358,7 +359,7 @@ static InterpretResult run(void) {
         case OP_SET_INDEX: {
             if (!isIndexable(PEEK(2))) {
                 runtimeError("%s is not an indexable type",
-                             typeofValue(PEEK(1)));
+                             typeofValue(PEEK(2)));
                 return INTERPRET_RUNTIME_ERR;
             }
 

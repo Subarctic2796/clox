@@ -81,6 +81,30 @@ static Value deleteNative(int argc, Value *args) {
     return NIL_VAL;
 }
 
+// clears arrays and maps so that they can
+// be reused ie setting the `cnt` to zero
+static Value clearNative(int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+
+    if (!(IS_ARRAY(args[0]) || IS_MAP(args[0]))) {
+        return ERROR_VAL(false,
+                         "Can only use 'clear' on maps and arrays, got %s",
+                         typeofValue(args[0]));
+    }
+
+    Value v = args[0];
+    if (IS_ARRAY(v)) {
+        AS_ARRAY(v)->items.cnt = 0;
+    } else if (IS_MAP(v)) {
+        Table m = AS_MAP(v)->items;
+        for (int i = 0; i < m.cap; i++) {
+            m.entries[i] = (Entry){EMPTY_VAL, NIL_VAL};
+        }
+        m.cnt = 0;
+    }
+    return NIL_VAL;
+}
+
 // returns length of a string, array or map
 static Value lenNative(int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
@@ -294,9 +318,10 @@ static void defineNative(VM *vm, const NativeDecl decl) {
 
 void defineAllNatives(VM *vm) {
     static const NativeDecl NATIVE_FNS[] = {
-        {"clock", 5, clockNative},   {"append", 6, appendNative},
-        {"delete", 6, deleteNative}, {"len", 3, lenNative},
-        {"error", 5, errorNative},   {"typeof", 6, typeofNative},
+        {"len", 3, lenNative},       {"clock", 5, clockNative},
+        {"error", 5, errorNative},   {"clear", 5, clearNative},
+        {"delete", 6, deleteNative}, {"append", 6, appendNative},
+        {"typeof", 6, typeofNative},
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_FNS); i++) {

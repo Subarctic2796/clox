@@ -135,7 +135,7 @@ const char *typeofValue(Value value) {
     } else if (IS_EMPTY(value)) {
         return "EMPTY";
     } else if (IS_OBJ(value)) {
-        return ObjTypeString(OBJ_TYPE(value));
+        return ObjTypeString(OBJ_TYPE(value)) + 4;
     }
     printf("unreachable");
     return "UNKNOWN";
