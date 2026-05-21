@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -328,6 +329,7 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     case OP_BUILD_ARRAY:
     case OP_BUILD_MAP:     return 1;
 
+    case OP_SMALL_NUM:
     case OP_JUMP:
     case OP_JUMP_IF_FALSE:
     case OP_LOOP:
@@ -580,6 +582,13 @@ static void grouping(bool canAssign) {
 static void number(bool canAssign) {
     (void)canAssign;
     double value = strtod(parser.prv.start, NULL);
+    if (trunc(value) == value) {
+        if (value <= UINT16_MAX) {
+            emitOp(OP_SMALL_NUM);
+            emitShort((uint16_t)value);
+            return;
+        }
+    }
     emitConstant(NUMBER_VAL(value));
 }
 

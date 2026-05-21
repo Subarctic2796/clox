@@ -280,14 +280,12 @@ static InterpretResult run(void) {
     } while (false)
 #endif
 
-    uint8_t inst = OP_NOP;
+    OpCode inst = OP_NOP;
     for (;;) {
         TRACE_EXECUTION();
         switch (inst = (OpCode)READ_BYTE()) {
-        case OP_CONSTANT: {
-            Value constant = READ_CONST();
-            PUSH(constant);
-        } break;
+        case OP_CONSTANT:  PUSH(READ_CONST()); break;
+        case OP_SMALL_NUM: PUSH(NUMBER_VAL(READ_SHORT())); break;
         case OP_NIL:       PUSH(NIL_VAL); break;
         case OP_TRUE:      PUSH(BOOL_VAL(true)); break;
         case OP_FALSE:     PUSH(BOOL_VAL(false)); break;
@@ -407,14 +405,8 @@ static InterpretResult run(void) {
             }
 #pragma GCC diagnostic pop
         } break;
-        case OP_GET_LOCAL: {
-            uint8_t slot = READ_BYTE();
-            PUSH(frame->slots[slot]);
-        } break;
-        case OP_SET_LOCAL: {
-            uint8_t slot = READ_BYTE();
-            frame->slots[slot] = PEEK(0);
-        } break;
+        case OP_GET_LOCAL:  PUSH(frame->slots[READ_BYTE()]); break;
+        case OP_SET_LOCAL:  frame->slots[READ_BYTE()] = PEEK(0); break;
         case OP_GET_GLOBAL: {
             Value name = READ_CONST();
             Value value = EMPTY_VAL;
@@ -486,9 +478,12 @@ static InterpretResult run(void) {
             Value a = POP();
             PUSH(BOOL_VAL(valuesEqual(a, b)));
         } break;
-        case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
-        case OP_LESS:    BINARY_OP(BOOL_VAL, <); break;
-        case OP_ADD:     {
+        case OP_GREATER:  BINARY_OP(BOOL_VAL, >); break;
+        case OP_LESS:     BINARY_OP(BOOL_VAL, <); break;
+        case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
+        case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
+        case OP_DIVIDE:   BINARY_OP(NUMBER_VAL, /); break;
+        case OP_ADD:      {
             if (IS_STRING(PEEK(0)) && IS_STRING(PEEK(1))) {
                 concatenate();
             } else if (IS_NUMBER(PEEK(0)) && IS_NUMBER(PEEK(1))) {
@@ -509,11 +504,8 @@ static InterpretResult run(void) {
             double a = AS_NUMBER(POP());
             PUSH(NUMBER_VAL(fmod(a, b)));
         } break;
-        case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
-        case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
-        case OP_DIVIDE:   BINARY_OP(NUMBER_VAL, /); break;
-        case OP_NOT:      vm.sp[-1] = BOOL_VAL(isFalsey(vm.sp[-1])); break;
-        case OP_NEGATE:   {
+        case OP_NOT:    vm.sp[-1] = BOOL_VAL(isFalsey(vm.sp[-1])); break;
+        case OP_NEGATE: {
             if (!IS_NUMBER(PEEK(0))) {
                 runtimeError("Operand must be a number");
                 return INTERPRET_RUNTIME_ERR;

@@ -45,6 +45,7 @@ typedef enum {
     OP_GET_SUPER,
 
     // 2 args
+    OP_SMALL_NUM,
     OP_JUMP,
     OP_JUMP_IF_FALSE,
     OP_LOOP,

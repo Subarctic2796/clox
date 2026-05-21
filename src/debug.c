@@ -119,6 +119,12 @@ int disassembleInst(Chunk *chunk, int offset) {
     case OP_CLASS:         return constantInst("OP_CLASS", chunk, offset);
     case OP_INHERIT:       return simpleInst("OP_INHERIT", offset);
     case OP_METHOD:        return constantInst("OP_METHOD", chunk, offset);
-    default:               printf("Unknown opcode %d\n", inst); return offset + 1;
+    case OP_SMALL_NUM:     {
+        uint16_t n = (uint16_t)(chunk->code[offset + 1] << 8);
+        n |= chunk->code[offset + 2];
+        printf("%-16s %4d\n", "OP_SMALL_NUM", n);
+        return offset + 3;
+    }
+    default: printf("Unknown opcode %d\n", inst); return offset + 1;
     }
 }
