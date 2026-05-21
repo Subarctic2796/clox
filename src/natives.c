@@ -20,6 +20,9 @@ typedef struct {
     const NativeDecl *fns;
 } NativeClassDecl;
 
+#define NATIVE_FN(name, fn)     {name, sizeof(name) - 1, fn}
+#define NATIVE_CLASS(name, fns) {name, sizeof(name) - 1, ARRAY_LEN(fns), fns}
+
 #define CHECK_ARITY_NATIVE(arity)                                              \
     if (argc != arity) {                                                       \
         return ERROR_VAL(false, "Expected " #arity " arguments but got %d",    \
@@ -318,10 +321,10 @@ static void defineNative(VM *vm, const NativeDecl decl) {
 
 void defineAllNatives(VM *vm) {
     static const NativeDecl NATIVE_FNS[] = {
-        {"len", 3, lenNative},       {"clock", 5, clockNative},
-        {"error", 5, errorNative},   {"clear", 5, clearNative},
-        {"delete", 6, deleteNative}, {"append", 6, appendNative},
-        {"typeof", 6, typeofNative},
+        NATIVE_FN("len", lenNative),       NATIVE_FN("clock", clockNative),
+        NATIVE_FN("error", errorNative),   NATIVE_FN("clear", clearNative),
+        NATIVE_FN("delete", deleteNative), NATIVE_FN("append", appendNative),
+        NATIVE_FN("typeof", typeofNative),
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_FNS); i++) {
@@ -329,14 +332,14 @@ void defineAllNatives(VM *vm) {
     }
 
     static const NativeDecl ITER_FNS[] = {
-        {"init", 4, iterInitNative},
-        {"next", 4, iterNextNative},
-        {"value", 5, iterValueNative},
-        {"index", 5, iterIndexNative},
+        NATIVE_FN("init", iterInitNative),
+        NATIVE_FN("next", iterNextNative),
+        NATIVE_FN("value", iterValueNative),
+        NATIVE_FN("index", iterIndexNative),
     };
 
     static const NativeClassDecl NATIVE_CLASSES[] = {
-        {"Iter", 5, 4, ITER_FNS},
+        NATIVE_CLASS("Iter", ITER_FNS),
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_CLASSES); i++) {

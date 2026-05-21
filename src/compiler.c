@@ -995,20 +995,13 @@ static bool forIterStmt() {
     Token first = parser.prv;
 
     // we still don't know if it is a forIterStmt but the odds are slightly
-    // higher we still need to see either a `,` or an `in` token to confirm
-    bool isForIterStmt = false;
+    // higher, but we still need to see either a `,` or an `in` token to confirm
     bool isIndexAndItem = false;
-    if (match(TOKEN_COMMA)) {
-        isForIterStmt = true;
-        // for now are are only allowing `var ix, i` in forIterStmts
-        isIndexAndItem = true;
-    } else if (match(TOKEN_IN)) {
-        isForIterStmt = true;
+    if (match(TOKEN_COMMA) || match(TOKEN_IN)) {
+        isIndexAndItem = parser.prv.type == TOKEN_COMMA;
+    } else {
+        return false;
     }
-
-    // if we didn't see a `,` or a `in` token then it definitely isn't
-    // so we return
-    if (!isForIterStmt) return false;
 
     // now we know we are in a forIterLoop so we can actually start
     // reporting errors, as we won't have to backtrack
