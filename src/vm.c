@@ -285,7 +285,7 @@ static InterpretResult run(void) {
         TRACE_EXECUTION();
         switch (inst = (OpCode)READ_BYTE()) {
         case OP_CONSTANT:  PUSH(READ_CONST()); break;
-        case OP_SMALL_NUM: PUSH(NUMBER_VAL(READ_SHORT())); break;
+        case OP_SMALL_INT: PUSH(NUMBER_VAL(READ_BYTE())); break;
         case OP_NIL:       PUSH(NIL_VAL); break;
         case OP_TRUE:      PUSH(BOOL_VAL(true)); break;
         case OP_FALSE:     PUSH(BOOL_VAL(false)); break;
@@ -389,16 +389,16 @@ static InterpretResult run(void) {
                 PUSH(value);
             } break;
             case OBJ_MAP: {
-                Value value = POP();
-                Value key = POP();
+                Value value = PEEK(0);
+                Value key = PEEK(1);
                 if (!isHashable(key)) {
                     runtimeError("%s is an unhashable type", typeofValue(key));
                     return INTERPRET_RUNTIME_ERR;
                 }
 
-                ObjMap *map = AS_MAP(PEEK(0));
+                ObjMap *map = AS_MAP(PEEK(2));
                 tableSet(&map->items, key, value);
-                (void)POP(); // pop the map
+                vm.sp -= 3;
                 PUSH(value);
             } break;
             default: break;
@@ -478,12 +478,19 @@ static InterpretResult run(void) {
             Value a = POP();
             PUSH(BOOL_VAL(valuesEqual(a, b)));
         } break;
-        case OP_GREATER:  BINARY_OP(BOOL_VAL, >); break;
-        case OP_LESS:     BINARY_OP(BOOL_VAL, <); break;
-        case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
-        case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
-        case OP_DIVIDE:   BINARY_OP(NUMBER_VAL, /); break;
-        case OP_ADD:      {
+        case OP_NOT_EQUAL: {
+            Value b = POP();
+            Value a = POP();
+            PUSH(BOOL_VAL(!valuesEqual(a, b)));
+        } break;
+        case OP_GREATER:       BINARY_OP(BOOL_VAL, >); break;
+        case OP_GREATER_EQUAL: BINARY_OP(BOOL_VAL, >=); break;
+        case OP_LESS:          BINARY_OP(BOOL_VAL, <); break;
+        case OP_LESS_EQUAL:    BINARY_OP(BOOL_VAL, <=); break;
+        case OP_SUBTRACT:      BINARY_OP(NUMBER_VAL, -); break;
+        case OP_MULTIPLY:      BINARY_OP(NUMBER_VAL, *); break;
+        case OP_DIVIDE:        BINARY_OP(NUMBER_VAL, /); break;
+        case OP_ADD:           {
             if (IS_STRING(PEEK(0)) && IS_STRING(PEEK(1))) {
                 concatenate();
             } else if (IS_NUMBER(PEEK(0)) && IS_NUMBER(PEEK(1))) {

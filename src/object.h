@@ -166,10 +166,24 @@ ObjString *copyString(const char *chars, int length);
 void printObject(Value value);
 ObjString *objectToString(Value value);
 
-void appendToArray(ObjArray *arr, Value value);
-void storeToArray(ObjArray *arr, int index, Value value);
-Value indexFromArray(ObjArray *arr, int index);
-void deleteFromArray(ObjArray *arr, int index);
+static inline void appendToArray(ObjArray *arr, Value value) {
+    writeValueArray(&arr->items, value);
+}
+
+static inline void storeToArray(ObjArray *arr, int index, Value value) {
+    arr->items.values[index] = value;
+}
+
+static inline Value indexFromArray(ObjArray *arr, int index) {
+    return arr->items.values[index];
+}
+
+static inline void deleteFromArray(ObjArray *arr, int index) {
+    for (int i = index; i < arr->items.cnt - 1; i++) {
+        arr->items.values[i] = arr->items.values[i + 1];
+    }
+    arr->items.values[arr->items.cnt--] = NIL_VAL;
+}
 
 // returns -1 if value is not a number
 // returns -2 if value is not an integer

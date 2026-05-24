@@ -145,7 +145,7 @@ const char *typeofValue(Value value) {
     case VAL_NIL:    return "NIL";
     case VAL_EMPTY:  return "EMPTY";
     case VAL_NUMBER: return "NUMBER";
-    case VAL_OBJ:    return ObjTypeString(OBJ_TYPE(value));
+    case VAL_OBJ:    return ObjTypeString(OBJ_TYPE(value)) + 4;
     default:         printf("unreachable"); return "UNKNOWN";
     }
 #endif /* ifdef NAN_BOXING */

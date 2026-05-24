@@ -59,8 +59,9 @@ int disassembleInst(Chunk *chunk, int offset) {
 
     OpCode inst = (OpCode)chunk->code[offset];
     switch (inst) {
-    case OP_CONSTANT:   return constantInst("OP_CONSTANT", chunk, offset);
     case OP_NOP:        return simpleInst("OP_NOP", offset);
+    case OP_CONSTANT:   return constantInst("OP_CONSTANT", chunk, offset);
+    case OP_SMALL_INT:  return byteInst("OP_SMALL_INT", chunk, offset);
     case OP_NIL:        return simpleInst("OP_NIL", offset);
     case OP_FALSE:      return simpleInst("OP_FALSE", offset);
     case OP_GET_INDEX:  return simpleInst("OP_GET_INDEX", offset);
@@ -70,30 +71,33 @@ int disassembleInst(Chunk *chunk, int offset) {
     case OP_GET_GLOBAL: return constantInst("OP_GET_GLOBAL", chunk, offset);
     case OP_DEFINE_GLOBAL:
         return constantInst("OP_DEFINE_GLOBAL", chunk, offset);
-    case OP_SET_GLOBAL:   return constantInst("OP_SET_GLOBAL", chunk, offset);
-    case OP_GET_UPVALUE:  return byteInst("OP_GET_UPVALUE", chunk, offset);
-    case OP_SET_UPVALUE:  return byteInst("OP_SET_UPVALUE", chunk, offset);
-    case OP_GET_PROPERTY: return constantInst("OP_GET_PROPERTY", chunk, offset);
-    case OP_SET_PROPERTY: return constantInst("OP_SET_PROPERTY", chunk, offset);
-    case OP_GET_SUPER:    return constantInst("OP_GET_SUPER", chunk, offset);
-    case OP_EQUAL:        return simpleInst("OP_EQUAL", offset);
-    case OP_GREATER:      return simpleInst("OP_GREATER", offset);
-    case OP_LESS:         return simpleInst("OP_LESS", offset);
-    case OP_TRUE:         return simpleInst("OP_TRUE", offset);
-    case OP_ADD:          return simpleInst("OP_ADD", offset);
-    case OP_MOD:          return simpleInst("OP_MOD", offset);
-    case OP_SUBTRACT:     return simpleInst("OP_SUBTRACT", offset);
-    case OP_MULTIPLY:     return simpleInst("OP_MULTIPLY", offset);
-    case OP_DIVIDE:       return simpleInst("OP_DIVIDE", offset);
-    case OP_NOT:          return simpleInst("OP_NOT", offset);
-    case OP_NEGATE:       return simpleInst("OP_NEGATE", offset);
-    case OP_PRINT:        return simpleInst("OP_PRINT", offset);
-    case OP_POP:          return simpleInst("OP_POP", offset);
-    case OP_LOOP:         return jumpInst("OP_LOOP", -1, chunk, offset);
-    case OP_CALL:         return byteInst("OP_CALL", chunk, offset);
-    case OP_INVOKE:       return invokeInst("OP_INVOKE", chunk, offset);
-    case OP_SUPER_INVOKE: return invokeInst("OP_SUPER_INVOKE", chunk, offset);
-    case OP_JUMP:         return jumpInst("OP_JUMP", 1, chunk, offset);
+    case OP_SET_GLOBAL:    return constantInst("OP_SET_GLOBAL", chunk, offset);
+    case OP_GET_UPVALUE:   return byteInst("OP_GET_UPVALUE", chunk, offset);
+    case OP_SET_UPVALUE:   return byteInst("OP_SET_UPVALUE", chunk, offset);
+    case OP_GET_PROPERTY:  return constantInst("OP_GET_PROPERTY", chunk, offset);
+    case OP_SET_PROPERTY:  return constantInst("OP_SET_PROPERTY", chunk, offset);
+    case OP_GET_SUPER:     return constantInst("OP_GET_SUPER", chunk, offset);
+    case OP_EQUAL:         return simpleInst("OP_EQUAL", offset);
+    case OP_NOT_EQUAL:     return simpleInst("OP_NOT_EQUAL", offset);
+    case OP_GREATER:       return simpleInst("OP_GREATER", offset);
+    case OP_GREATER_EQUAL: return simpleInst("OP_GREATER_EQUAL", offset);
+    case OP_LESS:          return simpleInst("OP_LESS", offset);
+    case OP_LESS_EQUAL:    return simpleInst("OP_LESS_EQUL", offset);
+    case OP_TRUE:          return simpleInst("OP_TRUE", offset);
+    case OP_ADD:           return simpleInst("OP_ADD", offset);
+    case OP_MOD:           return simpleInst("OP_MOD", offset);
+    case OP_SUBTRACT:      return simpleInst("OP_SUBTRACT", offset);
+    case OP_MULTIPLY:      return simpleInst("OP_MULTIPLY", offset);
+    case OP_DIVIDE:        return simpleInst("OP_DIVIDE", offset);
+    case OP_NOT:           return simpleInst("OP_NOT", offset);
+    case OP_NEGATE:        return simpleInst("OP_NEGATE", offset);
+    case OP_PRINT:         return simpleInst("OP_PRINT", offset);
+    case OP_POP:           return simpleInst("OP_POP", offset);
+    case OP_LOOP:          return jumpInst("OP_LOOP", -1, chunk, offset);
+    case OP_CALL:          return byteInst("OP_CALL", chunk, offset);
+    case OP_INVOKE:        return invokeInst("OP_INVOKE", chunk, offset);
+    case OP_SUPER_INVOKE:  return invokeInst("OP_SUPER_INVOKE", chunk, offset);
+    case OP_JUMP:          return jumpInst("OP_JUMP", 1, chunk, offset);
     case OP_JUMP_IF_FALSE:
         return jumpInst("OP_JUMP_IF_FALSE", 1, chunk, offset);
     case OP_CLOSURE: {
@@ -119,12 +123,6 @@ int disassembleInst(Chunk *chunk, int offset) {
     case OP_CLASS:         return constantInst("OP_CLASS", chunk, offset);
     case OP_INHERIT:       return simpleInst("OP_INHERIT", offset);
     case OP_METHOD:        return constantInst("OP_METHOD", chunk, offset);
-    case OP_SMALL_NUM:     {
-        uint16_t n = (uint16_t)(chunk->code[offset + 1] << 8);
-        n |= chunk->code[offset + 2];
-        printf("%-16s %4d\n", "OP_SMALL_NUM", n);
-        return offset + 3;
-    }
-    default: printf("Unknown opcode %d\n", inst); return offset + 1;
+    default:               printf("Unknown opcode %d\n", inst); return offset + 1;
     }
 }

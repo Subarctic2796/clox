@@ -13,8 +13,11 @@ typedef enum {
     OP_POP, // easy optimization OP_POPN, pop n slots at once
     OP_INHERIT,
     OP_EQUAL,
+    OP_NOT_EQUAL,
     OP_GREATER,
+    OP_GREATER_EQUAL,
     OP_LESS,
+    OP_LESS_EQUAL,
     OP_ADD,
     OP_SUBTRACT,
     OP_MULTIPLY,
@@ -30,8 +33,7 @@ typedef enum {
 
     // 1 args
     OP_CONSTANT,
-    OP_GET_PROPERTY,
-    OP_SET_PROPERTY,
+    OP_SMALL_INT,
     OP_BUILD_ARRAY,
     OP_BUILD_MAP,
     OP_METHOD,
@@ -40,12 +42,13 @@ typedef enum {
     OP_SET_GLOBAL,
     OP_GET_LOCAL,
     OP_SET_LOCAL,
+    OP_GET_PROPERTY,
+    OP_SET_PROPERTY,
     OP_GET_UPVALUE,
     OP_SET_UPVALUE,
     OP_GET_SUPER,
 
     // 2 args
-    OP_SMALL_NUM,
     OP_JUMP,
     OP_JUMP_IF_FALSE,
     OP_LOOP,

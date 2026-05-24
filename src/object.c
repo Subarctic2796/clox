@@ -165,25 +165,6 @@ ObjArray *newArray() {
     return arr;
 }
 
-void appendToArray(ObjArray *arr, Value value) {
-    writeValueArray(&arr->items, value);
-}
-
-void storeToArray(ObjArray *arr, int index, Value value) {
-    arr->items.values[index] = value;
-}
-
-Value indexFromArray(ObjArray *arr, int index) {
-    return arr->items.values[index];
-}
-
-void deleteFromArray(ObjArray *arr, int index) {
-    for (int i = index; i < arr->items.cnt - 1; i++) {
-        arr->items.values[i] = arr->items.values[i + 1];
-    }
-    arr->items.values[arr->items.cnt--] = NIL_VAL;
-}
-
 static inline void printFunction(ObjFn *func) {
     if (func->name == NULL) {
         printf("<script>");

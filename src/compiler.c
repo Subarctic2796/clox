@@ -298,8 +298,11 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     case OP_FALSE:
     case OP_POP:
     case OP_EQUAL:
+    case OP_NOT_EQUAL:
     case OP_GREATER:
+    case OP_GREATER_EQUAL:
     case OP_LESS:
+    case OP_LESS_EQUAL:
     case OP_ADD:
     case OP_MOD:
     case OP_SUBTRACT:
@@ -314,6 +317,7 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     case OP_GET_INDEX:
     case OP_SET_INDEX:     return 0;
 
+    case OP_SMALL_INT:
     case OP_CONSTANT:
     case OP_GET_PROPERTY:
     case OP_SET_PROPERTY:
@@ -329,7 +333,6 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     case OP_BUILD_ARRAY:
     case OP_BUILD_MAP:     return 1;
 
-    case OP_SMALL_NUM:
     case OP_JUMP:
     case OP_JUMP_IF_FALSE:
     case OP_LOOP:
@@ -347,6 +350,13 @@ static inline int getArgCount(const uint8_t *code, const ValueArray constants,
     }
     }
     return 0;
+}
+
+static inline void initLoop(Loop *loop) {
+    *loop = (Loop){
+        current->loop, curChunk(current)->cnt, 0, -1, current->scopeDepth,
+    };
+    current->loop = loop;
 }
 
 static void endLoop(int loopStart) {
@@ -437,13 +447,14 @@ static int resolveUpvalue(Compiler *compiler, Token *name) {
     return -1;
 }
 
-static void addLocal(const Token name) {
+static int addLocal(const Token name) {
     if (current->localCount == UINT8_COUNT) {
         error("Too many local variables in function");
-        return;
+        return -1;
     }
 
     current->locals[current->localCount++] = (Local){name, -1, OP_POP};
+    return current->localCount - 1;
 }
 
 static void declareVariable(void) {
@@ -523,12 +534,12 @@ static void binary(bool canAssign) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (operatorType) {
-    case TOKEN_NEQ:     emitBytes(OP_EQUAL, OP_NOT); break;
+    case TOKEN_NEQ:     emitOp(OP_NOT_EQUAL); break;
     case TOKEN_EQEQ:    emitOp(OP_EQUAL); break;
     case TOKEN_GT:      emitOp(OP_GREATER); break;
-    case TOKEN_GTEQ:    emitBytes(OP_LESS, OP_NOT); break;
+    case TOKEN_GTEQ:    emitOp(OP_GREATER_EQUAL); break;
     case TOKEN_LT:      emitOp(OP_LESS); break;
-    case TOKEN_LTEQ:    emitBytes(OP_GREATER, OP_NOT); break;
+    case TOKEN_LTEQ:    emitOp(OP_LESS_EQUAL); break;
     case TOKEN_PLUS:    emitOp(OP_ADD); break;
     case TOKEN_MINUS:   emitOp(OP_SUBTRACT); break;
     case TOKEN_STAR:    emitOp(OP_MULTIPLY); break;
@@ -583,9 +594,8 @@ static void number(bool canAssign) {
     (void)canAssign;
     double value = strtod(parser.prv.start, NULL);
     if (trunc(value) == value) {
-        if (value <= UINT16_MAX) {
-            emitOp(OP_SMALL_NUM);
-            emitShort((uint16_t)value);
+        if (value <= UINT8_MAX) {
+            emitOpArg(OP_SMALL_INT, (uint8_t)(uint64_t)value);
             return;
         }
     }
@@ -621,8 +631,8 @@ static void array(bool canAssign) {
 
             parsePrecedence(PREC_OR);
 
-            if (cnt == UINT8_COUNT) {
-                error("Cannot have more than 256 items in an array literal");
+            if (cnt > UINT8_MAX) {
+                error("Can't have more than 255 items in an array literal");
             }
             cnt++;
         } while (match(TOKEN_COMMA));
@@ -646,8 +656,8 @@ static void map(bool canAssign) {
             consume(TOKEN_COLON, "Expect ':' after map key");
             parsePrecedence(PREC_OR); // value
 
-            if (cnt == UINT8_COUNT) {
-                error("Cannot have more than 256 items in a map literal");
+            if (cnt > UINT8_MAX) {
+                error("Can't have more than 255 items in a map literal");
             }
             cnt++;
         } while (match(TOKEN_COMMA));
@@ -1066,30 +1076,26 @@ static bool forIterStmt() {
     }
 
     // add `it `
-    addLocal(syntheticToken("it ", 3));
-    markInitialized();
-    int itSlot = current->localCount - 1;
+    int itSlot = addLocal(syntheticToken("it ", 3));
+    defineVariable(0);
     // add `i` or `ix` and initialize it
-    addLocal(first);
-    markInitialized();
-    int iSlot = current->localCount - 1;
+    int iSlot = addLocal(first);
+    defineVariable(0);
     emitOp(OP_NIL);
 
     // add `ix`and initialize it if we need it
     int ixSlot = -1;
     if (isIndexAndItem) {
-        addLocal(second);
-        markInitialized();
-        ixSlot = current->localCount - 1;
+        ixSlot = addLocal(second);
+        defineVariable(0);
         emitOp(OP_NIL);
     }
 
     // compile the loop body
     consume(TOKEN_RPAREN, "Expect ')' after loop expression");
 
-    Loop loop = {current->loop, curChunk(current)->cnt, 0, -1,
-                 current->scopeDepth};
-    current->loop = &loop;
+    Loop loop = {0};
+    initLoop(&loop);
 
     // advance the iterator
     emitOpArg(OP_GET_LOCAL, itSlot);
@@ -1126,22 +1132,21 @@ static void forStmt(void) {
     consume(TOKEN_LPAREN, "Expect '(' after 'for'");
 
     // there are 2 types of for loops
-    // 1) for (var i = 0; i < n; i++) block
+    // 1) for (var i = 0; i < n; i = i +1) block
     // 2) for (var ix, i in iterable) block
     // we need to see which one it is and compile it correctly
     // to do this we have to save the state of the lexer and the parser
     // so that we can revert back to the current position if wasn't a
     // for loop over an iterable
 
-    Lexer savedLexer = parser.lexer;
+    // the parser has the lexer in it so saving the parser also saves the lexer
     Parser savedParser = parser;
     // if it was a for loop over an iterable it will call endScope
     // and we are done compiling the for loop so we just return
     if (forIterStmt()) return;
 
-    // otherwise we have to restore the state of the lexer and parse
+    // otherwise we have to restore the state of the lexer and parser
     // and try to compile a normal for loop
-    parser.lexer = savedLexer;
     parser = savedParser;
 
     if (match(TOKEN_SEMICOLON)) {
@@ -1152,9 +1157,8 @@ static void forStmt(void) {
         expressionStmt();
     }
 
-    Loop loop = {current->loop, curChunk(current)->cnt, 0, -1,
-                 current->scopeDepth};
-    current->loop = &loop;
+    Loop loop = {0};
+    initLoop(&loop);
     if (!match(TOKEN_SEMICOLON)) {
         expression();
         consume(TOKEN_SEMICOLON, "Expect ';' after loop condition");
@@ -1222,9 +1226,8 @@ static void returnStmt(void) {
 }
 
 static void whileStmt(void) {
-    Loop loop = {current->loop, curChunk(current)->cnt, 0, 0,
-                 current->scopeDepth};
-    current->loop = &loop;
+    Loop loop = {0};
+    initLoop(&loop);
 
     consume(TOKEN_LPAREN, "Expect '(' after 'while'");
     expression();
