@@ -8,6 +8,14 @@ static void repl(void) {
 #ifdef NAN_BOXING
     printf("NAN tagging is enabled\n");
 #endif
+
+#define HIST_FILE ".clox_hist"
+    if (linenoiseHistoryLoad(HIST_FILE) != 0) {
+        FILE *f = fopen(HIST_FILE, "a");
+        fclose(f);
+        linenoiseHistoryLoad(HIST_FILE);
+    }
+
     linenoiseHistorySetMaxLen(100);
     char *line = NULL;
     while ((line = linenoise("> ")) != NULL) {
@@ -15,6 +23,7 @@ static void repl(void) {
         interpret(line);
         free(line);
     }
+    linenoiseHistorySave(HIST_FILE);
 }
 
 static char *readFile(const char *path) {

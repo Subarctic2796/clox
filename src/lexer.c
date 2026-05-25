@@ -50,7 +50,7 @@ static inline Token errorToken(Lexer *l, const char *msg) {
     };
 }
 
-static inline void skipWhiteSpace(Lexer *l) {
+static inline Token skipWhiteSpace(Lexer *l) {
     for (;;) {
         char c = peek(l);
         switch (c) {
@@ -66,11 +66,35 @@ static inline void skipWhiteSpace(Lexer *l) {
                 while (peek(l) != '\n' && !isAtEnd(l)) {
                     advance(l);
                 }
+            } else if (peekNext(l) == '*') {
+                advance(l);
+                int nesting = 1;
+                while (nesting > 0) {
+                    if (isAtEnd(l)) {
+                        return errorToken(l, "Unterminated block comment");
+                    }
+
+                    if (peek(l) == '/' && peekNext(l) == '*') {
+                        advance(l);
+                        advance(l);
+                        nesting++;
+                        continue;
+                    }
+
+                    if (peek(l) == '*' && peekNext(l) == '/') {
+                        advance(l);
+                        advance(l);
+                        nesting--;
+                        continue;
+                    }
+
+                    advance(l);
+                }
             } else {
-                return;
+                return (Token){0};
             }
             break;
-        default: return;
+        default: return (Token){0};
         }
     }
 }
@@ -155,7 +179,9 @@ static inline Token makeString(Lexer *l) {
 }
 
 Token scanToken(Lexer *lexer) {
-    skipWhiteSpace(lexer);
+    Token err = skipWhiteSpace(lexer);
+    if (err.type == TOKEN_ERROR) return err;
+
     lexer->start = lexer->cur;
 
     if (isAtEnd(lexer)) return makeToken(lexer, TOKEN_EOF);

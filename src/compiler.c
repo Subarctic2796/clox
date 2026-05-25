@@ -1080,14 +1080,14 @@ static bool forIterStmt() {
     defineVariable(0);
     // add `i` or `ix` and initialize it
     int iSlot = addLocal(first);
-    defineVariable(0);
+    defineVariable(1);
     emitOp(OP_NIL);
 
     // add `ix`and initialize it if we need it
     int ixSlot = -1;
     if (isIndexAndItem) {
         ixSlot = addLocal(second);
-        defineVariable(0);
+        defineVariable(1);
         emitOp(OP_NIL);
     }
 
