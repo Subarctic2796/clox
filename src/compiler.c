@@ -1307,7 +1307,7 @@ static void statement(void) {
         endScope();
     } else if (match(TOKEN_BREAK)) {
         if (current->loop == NULL) {
-            error("Can only use 'break' inside of loops");
+            error("Can't use 'break' outside of loops");
             return;
         }
 
@@ -1319,7 +1319,7 @@ static void statement(void) {
         emitJump(OP_NOP);
     } else if (match(TOKEN_CONTINUE)) {
         if (current->loop == NULL) {
-            error("Can only use 'continue' inside of loops");
+            error("Can't use 'continue' outside of loops");
             return;
         }
 
