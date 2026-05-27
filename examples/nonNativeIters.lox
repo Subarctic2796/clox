@@ -38,7 +38,7 @@ class LLiter {
 }
 
 var ll = LinkedList();
-for (var i = 0; i < 5; i += 1) ll.add(i);
+for (var i = 0; i < 5; i = i + 1) ll.add(i);
 
 for (var ix, i in LLiter(ll)) {
     print i;
