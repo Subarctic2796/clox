@@ -200,11 +200,11 @@ void printObject(Value value) {
         }
         printf("}");
     } break;
-    case OBJ_BOUND_METHOD:
-        printFunction(AS_BOUND_METHOD(value)->method->fn);
-        break;
     case OBJ_INSTANCE:
         printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
+        break;
+    case OBJ_BOUND_METHOD:
+        printFunction(AS_BOUND_METHOD(value)->method->fn);
         break;
     case OBJ_CLOSURE:  printFunction(AS_CLOSURE(value)->fn); break;
     case OBJ_FUNCTION: printFunction(AS_FUNCTION(value)); break;

@@ -105,7 +105,6 @@ void initValueArray(ValueArray *array);
 void writeValueArray(ValueArray *array, Value value);
 void freeValueArray(ValueArray *array);
 void printValue(Value value);
-ObjString *valueToString(Value value);
 uint32_t hashValue(Value value);
 const char *typeofValue(Value value);
 

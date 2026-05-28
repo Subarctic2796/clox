@@ -198,7 +198,7 @@ static inline int emitJump(Compiler *c, uint8_t inst) {
 }
 
 static void emitReturn(Compiler *c) {
-    // TODO: if current->type == method or function
+    // TODO: if c->type == method or function
     // and last opcode is OP_RETURN then don't emit
     // OP_NIL, and OP_RETURN
     if (c->type == TYPE_INITIALIZER) {
@@ -387,11 +387,11 @@ static void endLoop(Compiler *c, int loopStart) {
     c->loop = c->loop->enclosing;
 }
 
-static inline void expression(void);
+static inline void expression(Compiler *c);
 static void statement(Compiler *c);
 static void declaration(Compiler *c);
 static inline ParseRule *getRule(TokenType type);
-static void parsePrecedence(Precedence precedence);
+static void parsePrecedence(Compiler *c, Precedence precedence);
 
 static inline uint8_t identifierConst(Compiler *c, Token *name) {
     return makeConstant(c, OBJ_VAL(copyString(name->start, name->len)));
@@ -513,7 +513,7 @@ static uint8_t argumentList(Compiler *c) {
     uint8_t argCnt = 0;
     if (!check(TOKEN_RPAREN)) {
         do {
-            expression();
+            expression(c);
             if (argCnt == 255) error("Can't have more than 255 arguments");
             argCnt++;
         } while (match(TOKEN_COMMA));
@@ -527,7 +527,7 @@ static void and_(bool canAssign) {
     int endJmpIdx = emitJump(current, OP_JUMP_IF_FALSE);
 
     emitPop(current);
-    parsePrecedence(PREC_AND);
+    parsePrecedence(current, PREC_AND);
 
     patchJump(current, endJmpIdx);
 }
@@ -536,7 +536,7 @@ static void binary(bool canAssign) {
     (void)canAssign;
     TokenType operatorType = parser.prv.type;
     ParseRule *rule = getRule(operatorType);
-    parsePrecedence((Precedence)(rule->precedence + 1));
+    parsePrecedence(current, (Precedence)(rule->precedence + 1));
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
@@ -568,7 +568,7 @@ static void dot(bool canAssign) {
     uint8_t name = identifierConst(current, &parser.prv);
 
     if (canAssign && match(TOKEN_EQ)) {
-        expression();
+        expression(current);
         emitOpArg(current, OP_SET_PROPERTY, name);
     } else if (match(TOKEN_LPAREN)) {
         uint8_t argCnt = argumentList(current);
@@ -593,7 +593,7 @@ static void literal(bool canAssign) {
 
 static void grouping(bool canAssign) {
     (void)canAssign;
-    expression();
+    expression(current);
     consume(TOKEN_RPAREN, "Expect ')' after expression");
 }
 
@@ -617,7 +617,7 @@ static void or_(bool canAssign) {
     patchJump(current, elseJumpIdx);
     emitPop(current);
 
-    parsePrecedence(PREC_OR);
+    parsePrecedence(current, PREC_OR);
     patchJump(current, endJumpIdx);
 }
 
@@ -636,7 +636,7 @@ static void array(bool canAssign) {
             // trailing comma
             if (check(TOKEN_RSQR)) break;
 
-            parsePrecedence(PREC_OR);
+            parsePrecedence(current, PREC_OR);
 
             if (cnt > UINT8_MAX) {
                 error("Can't have more than 255 items in an array literal");
@@ -659,9 +659,9 @@ static void map(bool canAssign) {
             // trailing comma
             if (check(TOKEN_RBRACE)) break;
 
-            parsePrecedence(PREC_OR); // key
+            parsePrecedence(current, PREC_OR); // key
             consume(TOKEN_COLON, "Expect ':' after map key");
-            parsePrecedence(PREC_OR); // value
+            parsePrecedence(current, PREC_OR); // value
 
             if (cnt > UINT8_MAX) {
                 error("Can't have more than 255 items in a map literal");
@@ -676,11 +676,11 @@ static void map(bool canAssign) {
 }
 
 static void subscript(bool canAssign) {
-    parsePrecedence(PREC_OR);
+    parsePrecedence(current, PREC_OR);
     consume(TOKEN_RSQR, "Expect ']' after index");
 
     if (canAssign && match(TOKEN_EQ)) {
-        expression();
+        expression(current);
         emitOp(current, OP_SET_INDEX);
     } else {
         emitOp(current, OP_GET_INDEX);
@@ -703,7 +703,7 @@ static void namedVariable(Compiler *c, Token name, bool canAssign) {
     }
 
     if (canAssign && match(TOKEN_EQ)) {
-        expression();
+        expression(c);
         emitOpArg(c, setOp, argIdx);
     } else {
         emitOpArg(c, getOp, argIdx);
@@ -764,7 +764,7 @@ static void unary(bool canAssign) {
     TokenType operatorType = parser.prv.type;
 
     // compile the operand
-    parsePrecedence(PREC_UNARY);
+    parsePrecedence(current, PREC_UNARY);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
@@ -839,7 +839,8 @@ static_assert(ARRAY_LEN(rules) == __TOKEN_CNT,
 
 static inline ParseRule *getRule(TokenType type) { return &rules[type]; }
 
-static void parsePrecedence(Precedence precedence) {
+static void parsePrecedence(Compiler *c, Precedence precedence) {
+    (void)c;
     advance();
     ParseFn prefixRule = getRule(parser.prv.type)->prefix;
     if (prefixRule == NULL) {
@@ -859,7 +860,9 @@ static void parsePrecedence(Precedence precedence) {
     }
 }
 
-static inline void expression(void) { parsePrecedence(PREC_ASSIGNMENT); }
+static inline void expression(Compiler *c) {
+    parsePrecedence(c, PREC_ASSIGNMENT);
+}
 
 static void block(Compiler *c) {
     while (!check(TOKEN_RBRACE) && !check(TOKEN_EOF)) {
@@ -968,7 +971,7 @@ static void varDecl(Compiler *c) {
     uint8_t globalIdx = parseVariable(c, "Expect variable name");
 
     if (match(TOKEN_EQ)) {
-        expression();
+        expression(c);
     } else {
         emitOp(c, OP_NIL);
     }
@@ -978,7 +981,7 @@ static void varDecl(Compiler *c) {
 }
 
 static void expressionStmt(Compiler *c) {
-    expression();
+    expression(c);
     consume(TOKEN_SEMICOLON, "Expect ';' after expression");
     emitPop(c);
 }
@@ -1071,7 +1074,7 @@ static bool forIterStmt(Compiler *c) {
     // so we can now compile the iterator expression and store it in a hidden
     // variable, the space in the name ensures that it won't collide with
     // user-define variables
-    expression();
+    expression(c);
 
     // make sure to actually construct the the iterator object
     emitOpArg(c, OP_CALL, 1);
@@ -1169,7 +1172,7 @@ static void forStmt(Compiler *c) {
     Loop loop = {0};
     initLoop(c, &loop);
     if (!match(TOKEN_SEMICOLON)) {
-        expression();
+        expression(c);
         consume(TOKEN_SEMICOLON, "Expect ';' after loop condition");
 
         // jmp out of the loop if cond is false
@@ -1180,7 +1183,7 @@ static void forStmt(Compiler *c) {
     if (!match(TOKEN_RPAREN)) {
         int bodyJmpIdx = emitJump(c, OP_JUMP);
         int incrStartIdx = curChunk(c)->cnt;
-        expression();
+        expression(c);
         emitPop(c);
         consume(TOKEN_RPAREN, "Expect ')' after clauses");
 
@@ -1197,7 +1200,7 @@ static void forStmt(Compiler *c) {
 
 static void ifStmt(Compiler *c) {
     consume(TOKEN_LPAREN, "Expect '(' after if");
-    expression();
+    expression(c);
     consume(TOKEN_RPAREN, "Expect ')' after condition");
 
     int thenJumpIdx = emitJump(c, OP_JUMP_IF_FALSE);
@@ -1213,7 +1216,7 @@ static void ifStmt(Compiler *c) {
 }
 
 static void printStmt(Compiler *c) {
-    expression();
+    expression(c);
     consume(TOKEN_SEMICOLON, "Expect ';' after value");
     emitOp(c, OP_PRINT);
 }
@@ -1228,7 +1231,7 @@ static void returnStmt(Compiler *c) {
             error("Can't return a value from an initializer");
         }
 
-        expression();
+        expression(c);
         consume(TOKEN_SEMICOLON, "Expect ';' after return value");
         emitOp(c, OP_RETURN);
     }
@@ -1239,7 +1242,7 @@ static void whileStmt(Compiler *c) {
     initLoop(c, &loop);
 
     consume(TOKEN_LPAREN, "Expect '(' after 'while'");
-    expression();
+    expression(c);
     consume(TOKEN_RPAREN, "Expect ')' after condition");
 
     loop.end = emitJump(c, OP_JUMP_IF_FALSE);
