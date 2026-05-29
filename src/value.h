@@ -108,4 +108,8 @@ void printValue(Value value);
 uint32_t hashValue(Value value);
 const char *typeofValue(Value value);
 
+int valueStringLength(Value value);
+int valueToStringX(Value value, char *buf, int offset);
+ObjString *valueToString(Value value);
+
 #endif // INCLUDE_CLOX_VALUE_H_

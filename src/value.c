@@ -150,3 +150,93 @@ const char *typeofValue(Value value) {
     }
 #endif /* ifdef NAN_BOXING */
 }
+
+int valueStringLength(Value value) {
+#ifdef NAN_BOXING
+    if (IS_BOOL(value)) {
+        return AS_BOOL(value) ? 4 : 5;
+    } else if (IS_NIL(value)) {
+        return 3;
+    } else if (IS_NUMBER(value)) {
+        return snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
+    } else if (IS_EMPTY(value)) {
+        return 7;
+    } else if (IS_OBJ(value)) {
+        return objectStringLength(value);
+    }
+    printf("unreachable");
+    return -1;
+#else
+    switch (value.type) {
+    case VAL_BOOL:   return AS_BOOL(value) ? 4 : 5;
+    case VAL_NIL:    return 3;
+    case VAL_EMPTY:  return 7;
+    case VAL_NUMBER: return snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
+    case VAL_OBJ:    return objectStringLength(value);
+    default:         printf("unreachable"); return -1;
+    }
+#endif /* ifdef NAN_BOXING */
+}
+
+int valueToStringX(Value value, char *buf, int offset) {
+#ifdef NAN_BOXING
+    if (IS_BOOL(value)) {
+        if (AS_BOOL(value)) {
+            snprintf(buf + offset, 5, "true");
+            return offset + 4;
+        }
+        snprintf(buf + offset, 6, "false");
+        return offset + 5;
+    } else if (IS_NIL(value)) {
+        snprintf(buf + offset, 4, "nil");
+        return offset + 3;
+    } else if (IS_NUMBER(value)) {
+        int len = snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
+        snprintf(buf + offset, len + 1, "%.14g", AS_NUMBER(value));
+        return offset + len;
+    } else if (IS_EMPTY(value)) {
+        snprintf(buf + offset, 8, "<empty>");
+        return offset + 7;
+    } else if (IS_OBJ(value)) {
+        return objectToStringX(value, buf, offset);
+    }
+    printf("unreachable");
+    return -1;
+#else
+    printf("TODO(valueStringX no NAN_BOXING\n");
+    abort();
+    switch (value.type) {
+    case VAL_BOOL: {
+        if (AS_BOOL(value)) {
+            snprintf(buf + offset, 5, "true");
+            return offset + 4;
+        }
+        snprintf(buf + offset, 6, "false");
+        return offset + 5;
+    }
+    case VAL_NIL: {
+        snprintf(buf + offset, 4, "nil");
+        return offset + 3;
+    }
+    case VAL_EMPTY: {
+        snprintf(buf + offset, 8, "<empty>");
+        return offset + 7;
+    }
+    case VAL_NUMBER: {
+        int len = snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
+        snprintf(buf + offset, len + 1, "%.14g", AS_NUMBER(value));
+        return offset + len;
+    }
+    case VAL_OBJ: return objectToStringX(value, buf, offset);
+    default:      printf("unreachable"); return -1;
+    }
+#endif /* ifdef NAN_BOXING */
+}
+
+ObjString *valueToString(Value value) {
+    int len = valueStringLength(value);
+    char *buf = ALLOCATE(char, len + 1);
+    valueToStringX(value, buf, 0);
+    buf[len] = '\0';
+    return takeString(buf, len);
+}

@@ -164,6 +164,9 @@ ObjString *copyString(const char *chars, int length);
 #define CONST_STRING(txt) copyString(txt, sizeof(txt) - 1)
 
 void printObject(Value value);
+int objectStringLength(Value value);
+int objectToStringX(Value value, char *buf, int offset);
+ObjString *objectToString(Value value);
 
 static inline void appendToArray(ObjArray *arr, Value value) {
     writeValueArray(&arr->items, value);

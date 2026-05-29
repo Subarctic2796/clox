@@ -165,7 +165,7 @@ ObjArray *newArray() {
     return arr;
 }
 
-static inline void printFunction(ObjFn *func) {
+static inline void printFunction(const ObjFn *func) {
     if (func->name == NULL) {
         printf("<script>");
         return;
@@ -214,4 +214,147 @@ void printObject(Value value) {
     case OBJ_ERROR:    printf("%s", AS_ERROR_MSG(value)); break;
     case OBJ_UPVALUE:  printf("upvalue"); break;
     }
+}
+
+static inline int fnStrLen(const ObjFn *fn) {
+    if (fn->name == NULL) return 8;
+    return fn->name->length + 5;
+}
+
+int objectStringLength(Value value) {
+    switch (OBJ_TYPE(value)) {
+    case OBJ_ARRAY: {
+        ValueArray elms = AS_ARRAY(value)->items;
+        if (elms.cnt == 0) return 2;
+        // int total = 2 + ((elms.cnt - 1) * 2);
+        int total = elms.cnt * 2;
+        for (int i = 0; i < elms.cnt; i++) {
+            total += valueStringLength(elms.values[i]);
+        }
+        return total;
+    }
+    case OBJ_MAP: {
+        Table elms = AS_MAP(value)->items;
+        if (elms.cnt == 0) return 2;
+        // int total = 2 + (elms.cnt * 2) + ((elms.cnt - 1) * 2);
+        int total = elms.cnt * 4;
+        for (int i = 0; i < elms.cap; i++) {
+            Entry entry = elms.entries[i];
+            if (IS_EMPTY(entry.key)) continue;
+
+            total += valueStringLength(entry.key);
+            total += valueStringLength(entry.value);
+        }
+        return total;
+    }
+    case OBJ_UPVALUE:      return 7;
+    case OBJ_NATIVE:       return 11;
+    case OBJ_BOUND_METHOD: return fnStrLen(AS_BOUND_METHOD(value)->method->fn);
+    case OBJ_CLOSURE:      return fnStrLen(AS_CLOSURE(value)->fn);
+    case OBJ_FUNCTION:     return fnStrLen(AS_FUNCTION(value));
+    case OBJ_INSTANCE:     return AS_INSTANCE(value)->klass->name->length + 9;
+    case OBJ_CLASS:        return AS_CLASS(value)->name->length;
+    case OBJ_STRING:       return AS_STRING(value)->length;
+    case OBJ_ERROR:        return AS_ERROR(value)->msg->length;
+    }
+    return -1;
+}
+
+static inline int fnToStringX(const ObjFn *fn, char *buf, int offset) {
+    if (fn->name == NULL) {
+        snprintf(buf + offset, 9, "<script>");
+        return offset + 8;
+    }
+    int len = fn->name->length + 5;
+    snprintf(buf + offset, len + 1, "<fn %s>", fn->name->chars);
+    return offset + len;
+}
+
+int objectToStringX(Value value, char *buf, int offset) {
+    switch (OBJ_TYPE(value)) {
+    case OBJ_ARRAY: {
+        ValueArray elms = AS_ARRAY(value)->items;
+        if (elms.cnt == 0) {
+            snprintf(buf + offset, 3, "[]");
+            return offset + 2;
+        }
+        snprintf(buf + offset, 2, "[");
+        offset++;
+        for (int i = 0; i < elms.cnt; i++) {
+            offset = valueToStringX(elms.values[i], buf, offset);
+            if (i != elms.cnt - 1) {
+                snprintf(buf + offset, 3, ", ");
+                offset += 2;
+            }
+        }
+        snprintf(buf + offset, 2, "]");
+        return offset + 1;
+    }
+    case OBJ_MAP: {
+        Table elms = AS_MAP(value)->items;
+        if (elms.cnt == 0) {
+            snprintf(buf + offset, 3, "{}");
+            return offset + 2;
+        }
+
+        snprintf(buf + offset, 2, "{");
+        offset++;
+        bool first = true;
+        for (int i = 0; i < elms.cap; i++) {
+            Entry entry = elms.entries[i];
+            if (IS_EMPTY(entry.key)) continue;
+
+            if (!first) {
+                snprintf(buf + offset, 3, ", ");
+                offset += 2;
+            }
+            first = false;
+
+            offset = valueToStringX(entry.key, buf, offset);
+            snprintf(buf + offset, 3, ": ");
+            offset += 2;
+            offset = valueToStringX(entry.value, buf, offset);
+        }
+        snprintf(buf + offset, 2, "}");
+        return offset + 1;
+    }
+    case OBJ_INSTANCE: {
+        const ObjString *name = AS_INSTANCE(value)->klass->name;
+        int len = name->length + 9;
+        snprintf(buf + offset, len + 1, "%s instance", name->chars);
+        return offset + len;
+    }
+    case OBJ_BOUND_METHOD:
+        return fnToStringX(AS_BOUND_METHOD(value)->method->fn, buf, offset);
+    case OBJ_CLOSURE:  return fnToStringX(AS_CLOSURE(value)->fn, buf, offset);
+    case OBJ_FUNCTION: return fnToStringX(AS_FUNCTION(value), buf, offset);
+    case OBJ_CLASS:    {
+        const ObjString *name = AS_CLASS(value)->name;
+        snprintf(buf + offset, name->length + 1, "%s", name->chars);
+        return offset + name->length;
+    }
+    case OBJ_STRING: {
+        const ObjString *str = AS_STRING(value);
+        snprintf(buf + offset, str->length + 1, "%s", str->chars);
+        return offset + str->length;
+    }
+    case OBJ_ERROR: {
+        const ObjString *msg = AS_ERROR(value)->msg;
+        snprintf(buf + offset, msg->length + 1, "%s", msg->chars);
+        return offset + msg->length;
+    }
+    case OBJ_NATIVE:
+        snprintf(buf + offset, 12, "<native fn>");
+        return offset + 11;
+    case OBJ_UPVALUE: snprintf(buf + offset, 8, "upvalue"); return offset + 7;
+    }
+    return -1;
+}
+
+ObjString *objectToString(Value value) {
+    int len = objectStringLength(value);
+    char *buf = ALLOCATE(char, len + 1);
+    objectToStringX(value, buf, 0);
+    buf[len] = '\0';
+    return takeString(buf, len);
 }
