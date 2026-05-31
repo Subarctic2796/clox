@@ -291,7 +291,9 @@ static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
     pushRoot(OBJ_VAL(kname));
     ObjClass *klass = newClass(kname);
     pushRoot(OBJ_VAL(klass));
-    tableSet(&vm->globals, OBJ_VAL(kname), OBJ_VAL(klass));
+    int index = vm->globalValues.cnt;
+    writeValueArray(&vm->globalValues, OBJ_VAL(klass));
+    tableSet(&vm->globalNames, OBJ_VAL(kname), NUMBER_VAL((double)index));
 
     // add native functions to the class
     for (int i = 0; i < decl.numFns; i++) {
@@ -314,7 +316,9 @@ static void defineNative(VM *vm, const NativeDecl decl) {
     pushRoot(OBJ_VAL(nativeName));
     ObjNative *fn = newNative(decl.fn);
     pushRoot(OBJ_VAL(fn));
-    tableSet(&vm->globals, OBJ_VAL(nativeName), OBJ_VAL(fn));
+    int index = vm->globalValues.cnt;
+    writeValueArray(&vm->globalValues, OBJ_VAL(fn));
+    tableSet(&vm->globalNames, OBJ_VAL(nativeName), NUMBER_VAL((double)index));
     popRoot(); // pop native ptr
     popRoot(); // pop native name
 }

@@ -54,7 +54,8 @@ void initVM(void) {
     // set up VM state that should not be a zero value
     vm.nextGC = 1024 * 1024; // 1mib
 
-    initTable(&vm.globals);
+    initTable(&vm.globalNames);
+    initValueArray(&vm.globalValues);
     initTable(&vm.strings);
 
     vm.initString = CONST_STRING("init");
@@ -63,10 +64,21 @@ void initVM(void) {
 }
 
 void freeVM(void) {
-    freeTable(&vm.globals);
+    freeTable(&vm.globalNames);
+    freeValueArray(&vm.globalValues);
     freeTable(&vm.strings);
     vm.initString = NULL;
     freeObjects();
+}
+
+static const char *findGlobalNameFromIndex(const VM *vm, int index) {
+    for (int i = 0; i < vm->globalNames.cap; i++) {
+        Entry entry = vm->globalNames.entries[i];
+        if (IS_EMPTY(entry.key)) continue;
+
+        if (index == (int)AS_NUMBER(entry.value)) return AS_CSTRING(entry.key);
+    }
+    return NULL;
 }
 
 static bool call(ObjClosure *closure, int argc) {
@@ -408,26 +420,26 @@ static InterpretResult run(void) {
         case OP_GET_LOCAL:  PUSH(frame->slots[READ_BYTE()]); break;
         case OP_SET_LOCAL:  frame->slots[READ_BYTE()] = PEEK(0); break;
         case OP_GET_GLOBAL: {
-            Value name = READ_CONST();
-            Value value = EMPTY_VAL;
-            if (!tableGet(&vm.globals, name, &value)) {
-                runtimeError("Undefined variable '%s'", AS_CSTRING(name));
+            int index = READ_BYTE();
+            Value value = vm.globalValues.values[index];
+            if (IS_EMPTY(value)) {
+                const char *name = findGlobalNameFromIndex(&vm, index);
+                runtimeError("Undefined variable '%s'", name);
                 return INTERPRET_RUNTIME_ERR;
             }
             PUSH(value);
         } break;
         case OP_DEFINE_GLOBAL: {
-            Value name = READ_CONST();
-            tableSet(&vm.globals, name, PEEK(0));
-            (void)POP();
+            vm.globalValues.values[READ_BYTE()] = POP();
         } break;
         case OP_SET_GLOBAL: {
-            Value name = READ_CONST();
-            if (tableSet(&vm.globals, name, PEEK(0))) {
-                tableDelete(&vm.globals, name);
-                runtimeError("Undefined variable '%s'", AS_CSTRING(name));
+            int index = READ_BYTE();
+            if (IS_EMPTY(vm.globalValues.values[index])) {
+                const char *name = findGlobalNameFromIndex(&vm, index);
+                runtimeError("Undefined variable '%s'", name);
                 return INTERPRET_RUNTIME_ERR;
             }
+            vm.globalValues.values[index] = PEEK(0);
         } break;
         case OP_GET_UPVALUE: {
             uint8_t slot = READ_BYTE();
@@ -597,8 +609,8 @@ static InterpretResult run(void) {
 
             ObjArray *arr = newArray();
             pushRoot(OBJ_VAL(arr));
-            for (Value *i = vm.sp - cnt; i < vm.sp; i++) {
-                appendToArray(arr, *i);
+            for (int i = cnt - 1; i >= 0; i--) {
+                appendToArray(arr, PEEK(i));
             }
             popRoot();
 
@@ -610,13 +622,13 @@ static InterpretResult run(void) {
 
             ObjMap *map = newMap();
             pushRoot(OBJ_VAL(map));
-            for (Value *i = vm.sp - cnt; i < vm.sp; i += 2) {
-                Value key = *i;
+            for (int i = cnt - 1; i >= 0; i -= 2) {
+                Value key = PEEK(i);
                 if (!isHashable(key)) {
                     runtimeError("%s is an unhashable type", typeofValue(key));
                     return INTERPRET_RUNTIME_ERR;
                 }
-                Value val = *(i + 1);
+                Value val = PEEK(i + 1);
                 tableSet(&map->items, key, val);
             }
             popRoot();

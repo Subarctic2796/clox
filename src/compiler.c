@@ -393,8 +393,54 @@ static void declaration(Compiler *c);
 static inline ParseRule *getRule(TokenType type);
 static void parsePrecedence(Compiler *c, Precedence precedence);
 
-static inline uint8_t identifierConst(Compiler *c, Token *name) {
-    return makeConstant(c, OBJ_VAL(copyString(name->start, name->len)));
+typedef enum {
+    IDENT_VAR,
+    IDENT_IDENT,
+    IDENT_CLASS_LOCAL,
+    IDENT_CLASS_GLOBAL,
+} IdentType;
+
+static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
+                                      uint8_t *classGlobal) {
+    ObjString *ident = copyString(name->start, name->len);
+    switch (type) {
+    case IDENT_IDENT:       return makeConstant(c, OBJ_VAL(ident));
+    case IDENT_CLASS_LOCAL: return makeConstant(c, OBJ_VAL(ident));
+    case IDENT_VAR:         {
+        Value index = EMPTY_VAL;
+        if (tableGet(&vm.globalNames, OBJ_VAL(ident), &index)) {
+            return (uint8_t)AS_NUMBER(index);
+        }
+
+        pushRoot(OBJ_VAL(ident));
+
+        uint8_t newIndex = (uint8_t)vm.globalValues.cnt;
+        writeValueArray(&vm.globalValues, EMPTY_VAL);
+        tableSet(&vm.globalNames, OBJ_VAL(ident), NUMBER_VAL((double)newIndex));
+
+        popRoot();
+
+        return newIndex;
+    }
+    case IDENT_CLASS_GLOBAL: {
+        Value index = EMPTY_VAL;
+        if (tableGet(&vm.globalNames, OBJ_VAL(ident), &index)) {
+            return (uint8_t)AS_NUMBER(index);
+        }
+
+        pushRoot(OBJ_VAL(ident));
+
+        uint8_t newIndex = (uint8_t)vm.globalValues.cnt;
+        writeValueArray(&vm.globalValues, EMPTY_VAL);
+        tableSet(&vm.globalNames, OBJ_VAL(ident), NUMBER_VAL((double)newIndex));
+
+        popRoot();
+
+        *classGlobal = newIndex;
+        return makeConstant(c, OBJ_VAL(ident));
+    }
+    default: return 0;
+    }
 }
 
 static inline bool identifiersEqual(Token *a, Token *b) {
@@ -489,7 +535,7 @@ static uint8_t parseVariable(Compiler *c, const char *msg) {
     // return dummy index instead, as locals aren't looked up by name
     if (c->scopeDepth > 0) return 0;
 
-    return identifierConst(c, &parser.prv);
+    return identifierConst(c, &parser.prv, IDENT_VAR, NULL);
 }
 
 static void markInitialized(Compiler *c) {
@@ -565,7 +611,7 @@ static void call(bool canAssign) {
 
 static void dot(bool canAssign) {
     consume(TOKEN_IDENTIFIER, "Expect property name after '.'");
-    uint8_t name = identifierConst(current, &parser.prv);
+    uint8_t name = identifierConst(current, &parser.prv, IDENT_IDENT, NULL);
 
     if (canAssign && match(TOKEN_EQ)) {
         expression(current);
@@ -697,7 +743,7 @@ static void namedVariable(Compiler *c, Token name, bool canAssign) {
         getOp = OP_GET_UPVALUE;
         setOp = OP_SET_UPVALUE;
     } else {
-        argIdx = identifierConst(c, &name);
+        argIdx = identifierConst(c, &name, IDENT_VAR, NULL);
         getOp = OP_GET_GLOBAL;
         setOp = OP_SET_GLOBAL;
     }
@@ -722,8 +768,9 @@ static inline Token syntheticToken(const char *txt, const int len) {
 }
 
 static inline uint8_t syntheticIdentifierConst(Compiler *c, const char *txt,
-                                               const int len) {
-    return makeConstant(c, OBJ_VAL(copyString(txt, len)));
+                                               const int len, bool isVar) {
+    Token tok = syntheticToken(txt, len);
+    return identifierConst(c, &tok, isVar ? IDENT_VAR : IDENT_IDENT, NULL);
 }
 
 static void super_(bool canAssign) {
@@ -736,7 +783,7 @@ static void super_(bool canAssign) {
 
     consume(TOKEN_DOT, "Expect '.' after 'super'");
     consume(TOKEN_IDENTIFIER, "Expect superclass method name");
-    uint8_t name = identifierConst(current, &parser.prv);
+    uint8_t name = identifierConst(current, &parser.prv, IDENT_IDENT, NULL);
 
     namedVariable(current, syntheticToken("this", 4), false);
     if (match(TOKEN_LPAREN)) {
@@ -908,7 +955,7 @@ static void function(FunctionType type) {
 
 static void method(Compiler *c) {
     consume(TOKEN_IDENTIFIER, "Expect method name");
-    uint8_t constant = identifierConst(c, &parser.prv);
+    uint8_t constant = identifierConst(c, &parser.prv, IDENT_IDENT, NULL);
 
     FunctionType type = TYPE_METHOD;
     if (parser.prv.len == 4 && memcmp(parser.prv.start, "init", 4) == 0) {
@@ -921,11 +968,18 @@ static void method(Compiler *c) {
 static void classDecl(Compiler *c) {
     consume(TOKEN_IDENTIFIER, "Expect class name");
     Token className = parser.prv;
-    uint8_t nameConst = identifierConst(c, &parser.prv);
+    IdentType type = IDENT_CLASS_LOCAL;
+    uint8_t classGlobal = 0;
+    if (c->scopeDepth == 0) type = IDENT_CLASS_GLOBAL;
+    uint8_t nameConst = identifierConst(c, &parser.prv, type, &classGlobal);
     declareVariable(c);
 
     emitOpArg(c, OP_CLASS, nameConst);
-    defineVariable(c, nameConst);
+    if (c->scopeDepth == 0) {
+        defineVariable(c, classGlobal);
+    } else {
+        defineVariable(c, nameConst);
+    }
 
     ClassCompiler classCompiler = {currentClass, false};
     currentClass = &classCompiler;
@@ -1069,7 +1123,7 @@ static bool forIterStmt(Compiler *c) {
     // so now we need to construct the iterator
     // we use the builtin Iter class this will then construct
     // the iterator object once the expression has been evaluated
-    emitOpArg(c, OP_GET_GLOBAL, syntheticIdentifierConst(c, "Iter", 4));
+    emitOpArg(c, OP_GET_GLOBAL, syntheticIdentifierConst(c, "Iter", 4, true));
 
     // so we can now compile the iterator expression and store it in a hidden
     // variable, the space in the name ensures that it won't collide with
@@ -1111,7 +1165,7 @@ static bool forIterStmt(Compiler *c) {
 
     // advance the iterator
     emitOpArg(c, OP_GET_LOCAL, itSlot);
-    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "next", 4), 0);
+    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "next", 4, false), 0);
 
     // test the condition
     loop.end = emitJump(c, OP_JUMP_IF_FALSE);
@@ -1119,14 +1173,16 @@ static bool forIterStmt(Compiler *c) {
 
     // update i
     emitOpArg(c, OP_GET_LOCAL, itSlot);
-    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "value", 5), 0);
+    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "value", 5, false),
+                0);
     emitOpArg(c, OP_SET_LOCAL, iSlot);
     emitPop(c);
 
     // update ix if we need to
     if (isIndexAndItem) {
         emitOpArg(c, OP_GET_LOCAL, itSlot);
-        emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "index", 5), 0);
+        emitOp2Args(c, OP_INVOKE,
+                    syntheticIdentifierConst(c, "index", 5, false), 0);
         emitOpArg(c, OP_SET_LOCAL, ixSlot);
         emitPop(c);
     }

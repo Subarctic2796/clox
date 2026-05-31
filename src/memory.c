@@ -198,7 +198,8 @@ static void markRoots(void) {
 #ifdef DEBUG_LOG_GC
     printf("marking globals\n");
 #endif // ifdef DEBUG_LOG_GC
-    markTable(&vm.globals);
+    markTable(&vm.globalNames);
+    markArray(&vm.globalValues);
 
 #ifdef DEBUG_LOG_GC
     printf("marking compiler roots\n");

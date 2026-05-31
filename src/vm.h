@@ -23,7 +23,8 @@ typedef struct {
 
     Value stack[STACK_MAX];
     Value *sp;
-    Table globals;
+    Table globalNames;
+    ValueArray globalValues;
     Table strings;
     ObjString *initString;
     ObjUpvalue *openUpvalues;

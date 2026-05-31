@@ -59,19 +59,18 @@ int disassembleInst(Chunk *chunk, int offset) {
 
     OpCode inst = (OpCode)chunk->code[offset];
     switch (inst) {
-    case OP_NOP:        return simpleInst("OP_NOP", offset);
-    case OP_CONSTANT:   return constantInst("OP_CONSTANT", chunk, offset);
-    case OP_SMALL_INT:  return byteInst("OP_SMALL_INT", chunk, offset);
-    case OP_NIL:        return simpleInst("OP_NIL", offset);
-    case OP_FALSE:      return simpleInst("OP_FALSE", offset);
-    case OP_GET_INDEX:  return simpleInst("OP_GET_INDEX", offset);
-    case OP_SET_INDEX:  return simpleInst("OP_SET_INDEX", offset);
-    case OP_GET_LOCAL:  return byteInst("OP_GET_LOCAL", chunk, offset);
-    case OP_SET_LOCAL:  return byteInst("OP_SET_LOCAL", chunk, offset);
-    case OP_GET_GLOBAL: return constantInst("OP_GET_GLOBAL", chunk, offset);
-    case OP_DEFINE_GLOBAL:
-        return constantInst("OP_DEFINE_GLOBAL", chunk, offset);
-    case OP_SET_GLOBAL:    return constantInst("OP_SET_GLOBAL", chunk, offset);
+    case OP_NOP:           return simpleInst("OP_NOP", offset);
+    case OP_CONSTANT:      return constantInst("OP_CONSTANT", chunk, offset);
+    case OP_SMALL_INT:     return byteInst("OP_SMALL_INT", chunk, offset);
+    case OP_NIL:           return simpleInst("OP_NIL", offset);
+    case OP_FALSE:         return simpleInst("OP_FALSE", offset);
+    case OP_GET_INDEX:     return simpleInst("OP_GET_INDEX", offset);
+    case OP_SET_INDEX:     return simpleInst("OP_SET_INDEX", offset);
+    case OP_GET_LOCAL:     return byteInst("OP_GET_LOCAL", chunk, offset);
+    case OP_SET_LOCAL:     return byteInst("OP_SET_LOCAL", chunk, offset);
+    case OP_GET_GLOBAL:    return byteInst("OP_GET_GLOBAL", chunk, offset);
+    case OP_DEFINE_GLOBAL: return byteInst("OP_DEFINE_GLOBAL", chunk, offset);
+    case OP_SET_GLOBAL:    return byteInst("OP_SET_GLOBAL", chunk, offset);
     case OP_GET_UPVALUE:   return byteInst("OP_GET_UPVALUE", chunk, offset);
     case OP_SET_UPVALUE:   return byteInst("OP_SET_UPVALUE", chunk, offset);
     case OP_GET_PROPERTY:  return constantInst("OP_GET_PROPERTY", chunk, offset);
