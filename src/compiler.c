@@ -217,10 +217,10 @@ static uint8_t makeConstant(Compiler *c, Value value) {
 
     // add constant
     // make sure not collected
-    if (IS_OBJ(value)) pushRoot(value);
+    if (IS_OBJ(value)) pushRoot(&vm, value);
     int constIdx = addConst(curChunk(c), value);
     // its safe so can remove it from temp roots
-    if (IS_OBJ(value)) popRoot();
+    if (IS_OBJ(value)) popRoot(&vm);
 
     if (constIdx > UINT8_MAX) {
         error("Too many constants in on chunk");
@@ -412,13 +412,13 @@ static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
             return (uint8_t)AS_NUMBER(index);
         }
 
-        pushRoot(OBJ_VAL(ident));
+        pushRoot(&vm, OBJ_VAL(ident));
 
         uint8_t newIndex = (uint8_t)vm.globalValues.cnt;
         writeValueArray(&vm.globalValues, EMPTY_VAL);
         tableSet(&vm.globalNames, OBJ_VAL(ident), NUMBER_VAL((double)newIndex));
 
-        popRoot();
+        popRoot(&vm);
 
         return newIndex;
     }
@@ -428,13 +428,13 @@ static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
             return (uint8_t)AS_NUMBER(index);
         }
 
-        pushRoot(OBJ_VAL(ident));
+        pushRoot(&vm, OBJ_VAL(ident));
 
         uint8_t newIndex = (uint8_t)vm.globalValues.cnt;
         writeValueArray(&vm.globalValues, EMPTY_VAL);
         tableSet(&vm.globalNames, OBJ_VAL(ident), NUMBER_VAL((double)newIndex));
 
-        popRoot();
+        popRoot(&vm);
 
         *classGlobal = newIndex;
         return makeConstant(c, OBJ_VAL(ident));

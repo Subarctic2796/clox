@@ -1,5 +1,4 @@
 #include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -83,9 +82,9 @@ static ObjString *allocateString(char *chars, int length, uint32_t hash) {
     string->chars = chars;
     string->hash = hash;
 
-    pushRoot(OBJ_VAL(string)); // make sure not collect by mistake
+    pushRoot(&vm, OBJ_VAL(string)); // make sure not collect by mistake
     tableSet(&vm.strings, OBJ_VAL(string), NIL_VAL);
-    popRoot();
+    popRoot(&vm);
 
     return string;
 }
@@ -135,9 +134,9 @@ ObjError *newError(bool recoverable, const char *fmt, ...) {
     va_end(va);
 
     ObjString *msg = takeString(buf, len);
-    pushRoot(OBJ_VAL(msg)); // keep msg safe
+    pushRoot(&vm, OBJ_VAL(msg)); // keep msg safe
     ObjError *err = ALLOCATE_OBJ(ObjError, OBJ_ERROR);
-    popRoot();
+    popRoot(&vm);
 
     // set up error
     err->msg = msg;
@@ -214,6 +213,7 @@ void printObject(Value value) {
     case OBJ_ERROR:    printf("%s", AS_ERROR_MSG(value)); break;
     case OBJ_UPVALUE:  printf("upvalue"); break;
     }
+    UNREACHABLE();
 }
 
 static inline int fnStrLen(const ObjFn *fn) {
@@ -257,6 +257,7 @@ int objectStringLength(Value value) {
     case OBJ_STRING:       return AS_STRING(value)->length;
     case OBJ_ERROR:        return AS_ERROR(value)->msg->length;
     }
+    UNREACHABLE();
     return -1;
 }
 
@@ -348,6 +349,7 @@ int objectToStringX(Value value, char *buf, int offset) {
         return offset + 11;
     case OBJ_UPVALUE: snprintf(buf + offset, 8, "upvalue"); return offset + 7;
     }
+    UNREACHABLE();
     return -1;
 }
 

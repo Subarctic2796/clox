@@ -20,7 +20,7 @@ static void repl(void) {
     char *line = NULL;
     while ((line = linenoise("> ")) != NULL) {
         linenoiseHistoryAdd(line);
-        interpret(line);
+        interpret(&vm, line);
         free(line);
     }
     linenoiseHistorySave(HIST_FILE);
@@ -55,7 +55,7 @@ static char *readFile(const char *path) {
 
 static void runFile(const char *path) {
     char *src = readFile(path);
-    InterpretResult result = interpret(src);
+    InterpretResult result = interpret(&vm, src);
     free(src);
 
     switch (result) {
@@ -69,7 +69,7 @@ static void runFile(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
-    initVM();
+    initVM(&vm);
 
     switch (argc) {
     case 1:  repl(); break;
@@ -77,6 +77,6 @@ int main(int argc, char *argv[]) {
     default: fprintf(stderr, "Usage: clox [path]\n"); exit(64);
     }
 
-    freeVM();
+    freeVM(&vm);
     return EXIT_SUCCESS;
 }

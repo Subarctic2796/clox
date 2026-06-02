@@ -17,6 +17,15 @@
 #define DEBUG_TRACE_EXECUTION
 #define DEBUG_STRESS_GC
 #define DEBUG_LOG_GC
+
+#define UNREACHABLE()                                                          \
+    do {                                                                       \
+        fprintf(stderr, "[%s:%d] in %s() should be unreachable\n", __FILE__,   \
+                __LINE__, __func__);                                           \
+        abort();                                                               \
+    } while (0)
+#else
+#define UNREACHABLE() __builtin_unreachable()
 #endif // LOX_DEBUG
 
 #define UINT8_COUNT (UINT8_MAX + 1)

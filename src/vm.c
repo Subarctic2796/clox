@@ -1,38 +1,38 @@
 #include <stdarg.h>
+#include <stdlib.h>
 
 #include "chunk.h"
 #include "common.h"
 #include "compiler.h"
+#include "memory.h"
 #include "natives.h"
+#include "object.h"
 #include "table.h"
 #include "value.h"
+#include "vm.h"
 
 #ifdef DEBUG_TRACE_EXECUTION
 #include "debug.h"
 #endif
 
-#include "memory.h"
-#include "object.h"
-#include "vm.h"
-
 VM vm = {0};
 
-static inline void resetStack(void) {
-    vm.sp = vm.stack;
-    vm.frameCount = 0;
-    vm.openUpvalues = NULL;
-    vm.tempCnt = 0;
+static inline void resetStack(VM *vm) {
+    vm->sp = vm->stack;
+    vm->frameCount = 0;
+    vm->openUpvalues = NULL;
+    vm->tempCnt = 0;
 }
 
-static void runtimeError(const char *format, ...) {
+static void runtimeError(VM *vm, const char *format, ...) {
     va_list args;
     va_start(args, format);
     vfprintf(stderr, format, args);
     va_end(args);
     fputs("\n", stderr);
 
-    for (int i = vm.frameCount - 1; i >= 0; i--) {
-        CallFrame *frame = &vm.frames[i];
+    for (int i = vm->frameCount - 1; i >= 0; i--) {
+        CallFrame *frame = &vm->frames[i];
         ObjFn *fn = frame->closure->fn;
         // '-1' because READ_BYTE already advanced the ip
         size_t inst = frame->ip - fn->chunk.code - 1;
@@ -44,30 +44,31 @@ static void runtimeError(const char *format, ...) {
         }
     }
 
-    resetStack();
+    resetStack(vm);
 }
-void initVM(void) {
+
+void initVM(VM *vm) {
     // zero the VM
-    vm = (VM){0};
-    resetStack();
+    *vm = (VM){0};
+    resetStack(vm);
 
     // set up VM state that should not be a zero value
-    vm.nextGC = 1024 * 1024; // 1mib
+    vm->nextGC = 1024 * 1024; // 1mib
 
-    initTable(&vm.globalNames);
-    initValueArray(&vm.globalValues);
-    initTable(&vm.strings);
+    initTable(&vm->globalNames);
+    initValueArray(&vm->globalValues);
+    initTable(&vm->strings);
 
-    vm.initString = CONST_STRING("init");
+    vm->initString = CONST_STRING("init");
 
-    defineAllNatives(&vm);
+    defineAllNatives(vm);
 }
 
-void freeVM(void) {
-    freeTable(&vm.globalNames);
-    freeValueArray(&vm.globalValues);
-    freeTable(&vm.strings);
-    vm.initString = NULL;
+void freeVM(VM *vm) {
+    freeTable(&vm->globalNames);
+    freeValueArray(&vm->globalValues);
+    freeTable(&vm->strings);
+    vm->initString = NULL;
     freeObjects();
 }
 
@@ -81,92 +82,93 @@ static const char *findGlobalNameFromIndex(const VM *vm, int index) {
     return NULL;
 }
 
-static bool call(ObjClosure *closure, int argc) {
+static bool call(VM *vm, ObjClosure *closure, int argc) {
     if (argc != closure->fn->arity) {
-        runtimeError("Expected %d arguments but got %d", closure->fn->arity,
+        runtimeError(vm, "Expected %d arguments but got %d", closure->fn->arity,
                      argc);
         return false;
     }
 
-    if (vm.frameCount == FRAMES_MAX) {
-        runtimeError("Stack overflow");
+    if (vm->frameCount == FRAMES_MAX) {
+        runtimeError(vm, "Stack overflow");
         return false;
     }
 
     // updates the VM's frame ip
-    CallFrame *frame = &vm.frames[vm.frameCount++];
+    CallFrame *frame = &vm->frames[vm->frameCount++];
     frame->closure = closure;
     frame->ip = closure->fn->chunk.code;
-    frame->slots = vm.sp - argc - 1;
+    frame->slots = vm->sp - argc - 1;
     return true;
 }
 
-static bool callValue(Value callee, int argCnt) {
+static bool callValue(VM *vm, Value callee, int argCnt) {
     if (IS_OBJ(callee)) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
         switch (OBJ_TYPE(callee)) {
         case OBJ_BOUND_METHOD: {
             ObjBoundMethod *bound = AS_BOUND_METHOD(callee);
-            vm.sp[-argCnt - 1] = bound->receiver;
-            return call(bound->method, argCnt);
+            vm->sp[-argCnt - 1] = bound->receiver;
+            return call(vm, bound->method, argCnt);
         }
         case OBJ_CLASS: {
             ObjClass *klass = AS_CLASS(callee);
-            vm.sp[-argCnt - 1] = OBJ_VAL(newInstance(klass));
+            vm->sp[-argCnt - 1] = OBJ_VAL(newInstance(klass));
             Value init = EMPTY_VAL;
-            if (tableGet(&klass->methods, OBJ_VAL(vm.initString), &init)) {
-                if (IS_CLOSURE(init)) return call(AS_CLOSURE(init), argCnt);
+            if (tableGet(&klass->methods, OBJ_VAL(vm->initString), &init)) {
+                if (IS_CLOSURE(init)) return call(vm, AS_CLOSURE(init), argCnt);
 
                 NativeFn native = AS_NATIVE(init);
-                Value result = native(argCnt, vm.sp - argCnt);
+                Value result = native(argCnt, vm->sp - argCnt);
                 if (IS_ERROR(result) && !AS_ERROR(result)->recoverable) {
-                    runtimeError(AS_ERROR_MSG(result));
+                    runtimeError(vm, AS_ERROR_MSG(result));
                     return false;
                 }
-                vm.sp -= argCnt + 1;
-                push(result);
+                vm->sp -= argCnt + 1;
+                push(vm, result);
                 return true;
             } else if (argCnt != 0) {
-                runtimeError("Expected 0 arguments but got %d", argCnt);
+                runtimeError(vm, "Expected 0 arguments but got %d", argCnt);
                 return false;
             }
             return true;
         }
-        case OBJ_CLOSURE: return call(AS_CLOSURE(callee), argCnt);
+        case OBJ_CLOSURE: return call(vm, AS_CLOSURE(callee), argCnt);
         case OBJ_NATIVE:  {
             NativeFn native = AS_NATIVE(callee);
-            Value result = native(argCnt, vm.sp - argCnt);
+            Value result = native(argCnt, vm->sp - argCnt);
             if (IS_ERROR(result) && !AS_ERROR(result)->recoverable) {
-                runtimeError(AS_ERROR_MSG(result));
+                runtimeError(vm, AS_ERROR_MSG(result));
                 return false;
             }
-            vm.sp -= argCnt + 1;
-            push(result);
+            vm->sp -= argCnt + 1;
+            push(vm, result);
             return true;
         }
         default: break; // non-callable object type
         }
 #pragma GCC diagnostic pop
     }
-    runtimeError("Can only call functions and classes");
+    runtimeError(vm, "Can only call functions and classes");
     return false;
 }
 
-static inline bool invokeFromClass(ObjClass *klass, Value name, int argc) {
+static inline bool invokeFromClass(VM *vm, ObjClass *klass, Value name,
+                                   int argc) {
     Value method = EMPTY_VAL;
     if (!tableGet(&klass->methods, name, &method)) {
-        runtimeError("Undefined property '%s'", AS_CSTRING(name));
+        runtimeError(vm, "Undefined property '%s'", AS_CSTRING(name));
         return false;
     }
-    return callValue(method, argc);
+    return callValue(vm, method, argc);
 }
 
-static bool invoke(Value name, int argCnt) {
-    Value receiver = peek(argCnt);
+static bool invoke(VM *vm, Value name, int argCnt) {
+    Value receiver = peek(vm, argCnt);
 
     if (!IS_INSTANCE(receiver)) {
-        runtimeError("Only instances have methods");
+        runtimeError(vm, "Only instances have methods");
         return false;
     }
 
@@ -174,29 +176,29 @@ static bool invoke(Value name, int argCnt) {
 
     Value value = EMPTY_VAL;
     if (tableGet(&instance->fields, name, &value)) {
-        vm.sp[-argCnt - 1] = value;
-        return callValue(value, argCnt);
+        vm->sp[-argCnt - 1] = value;
+        return callValue(vm, value, argCnt);
     }
 
-    return invokeFromClass(instance->klass, name, argCnt);
+    return invokeFromClass(vm, instance->klass, name, argCnt);
 }
 
-static bool bindMethod(ObjClass *klass, Value name) {
+static bool bindMethod(VM *vm, ObjClass *klass, Value name) {
     Value method = EMPTY_VAL;
     if (!tableGet(&klass->methods, name, &method)) {
-        runtimeError("Undefined property '%s'", AS_CSTRING(name));
+        runtimeError(vm, "Undefined property '%s'", AS_CSTRING(name));
         return false;
     }
 
-    ObjBoundMethod *bound = newBoundMethod(peek(0), AS_CLOSURE(method));
-    pop(); // pop 'this'
-    push(OBJ_VAL(bound));
+    ObjBoundMethod *bound = newBoundMethod(peek(vm, 0), AS_CLOSURE(method));
+    pop(vm); // pop 'this'
+    push(vm, OBJ_VAL(bound));
     return true;
 }
 
-static ObjUpvalue *captureUpvalue(Value *local) {
+static ObjUpvalue *captureUpvalue(VM *vm, Value *local) {
     ObjUpvalue *prv = NULL;
-    ObjUpvalue *upvalue = vm.openUpvalues;
+    ObjUpvalue *upvalue = vm->openUpvalues;
     while (upvalue != NULL && upvalue->location > local) {
         prv = upvalue;
         upvalue = upvalue->next;
@@ -208,7 +210,7 @@ static ObjUpvalue *captureUpvalue(Value *local) {
     createdUpvalue->next = upvalue;
 
     if (prv == NULL) {
-        vm.openUpvalues = createdUpvalue;
+        vm->openUpvalues = createdUpvalue;
     } else {
         prv->next = createdUpvalue;
     }
@@ -216,29 +218,29 @@ static ObjUpvalue *captureUpvalue(Value *local) {
     return createdUpvalue;
 }
 
-static void closeUpvalues(Value *last) {
-    while (vm.openUpvalues != NULL && vm.openUpvalues->location >= last) {
-        ObjUpvalue *upvalue = vm.openUpvalues;
+static void closeUpvalues(VM *vm, Value *last) {
+    while (vm->openUpvalues != NULL && vm->openUpvalues->location >= last) {
+        ObjUpvalue *upvalue = vm->openUpvalues;
         upvalue->closed = *upvalue->location;
         upvalue->location = &upvalue->closed;
-        vm.openUpvalues = upvalue->next;
+        vm->openUpvalues = upvalue->next;
     }
 }
 
-static void defineMethod(Value name) {
-    Value method = peek(0);
-    ObjClass *klass = AS_CLASS(peek(1));
+static inline void defineMethod(VM *vm, Value name) {
+    Value method = peek(vm, 0);
+    ObjClass *klass = AS_CLASS(peek(vm, 1));
     tableSet(&klass->methods, name, method);
-    pop();
+    pop(vm);
 }
 
 static inline bool isFalsey(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
 }
 
-static void concatenate(void) {
-    ObjString *b = AS_STRING(peek(0));
-    ObjString *a = AS_STRING(peek(1));
+static inline void concatenate(VM *vm) {
+    ObjString *b = AS_STRING(peek(vm, 0));
+    ObjString *a = AS_STRING(peek(vm, 1));
 
     int length = a->length + b->length;
     char *chars = ALLOCATE(char, length + 1);
@@ -247,16 +249,126 @@ static void concatenate(void) {
     chars[length] = '\0';
 
     ObjString *result = takeString(chars, length);
-    vm.sp -= 2; // pop the 2 strings ontop of the stack
-    push(OBJ_VAL(result));
+    vm->sp -= 2; // pop the 2 strings ontop of the stack
+    push(vm, OBJ_VAL(result));
 }
 
-static InterpretResult run(void) {
-    CallFrame *frame = &vm.frames[vm.frameCount - 1];
+static inline bool doIndexedGet(VM *vm) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+    switch (OBJ_TYPE(peek(vm, 1))) {
+    case OBJ_STRING: {
+        Value index_ = pop(vm);
+        ObjString *str = AS_STRING(peek(vm, 0));
 
-#define PUSH(value) (*vm.sp++ = value)
-#define POP()       (*(--vm.sp))
-#define PEEK(dist)  (*(vm.sp - 1 - dist))
+        int index = isValidIndex(index_, str->length);
+        if (index == -1) {
+            runtimeError(vm, "Can only use numbers to index strings");
+            return false;
+        } else if (index == -2) {
+            runtimeError(vm, "can only use integers to index into strings");
+            return false;
+        } else if (index == -3) {
+            runtimeError(vm, "index out of bounds");
+            return false;
+        }
+
+        ObjString *result = copyString(str->chars + index, 1);
+        pop(vm); // the string
+        push(vm, OBJ_VAL(result));
+        return true;
+    }
+    case OBJ_ARRAY: {
+        Value index_ = pop(vm);
+        ObjArray *arr = AS_ARRAY(pop(vm));
+
+        int index = isValidIndex(index_, arr->items.cnt);
+        if (index == -1) {
+            runtimeError(vm, "Can only use numbers to index arrays");
+            return false;
+        } else if (index == -2) {
+            runtimeError(vm, "can only use integers to index into arrays");
+            return false;
+        } else if (index == -3) {
+            runtimeError(vm, "index out of bounds");
+            return false;
+        }
+
+        push(vm, indexFromArray(arr, index));
+        return true;
+    }
+    case OBJ_MAP: {
+        Value key = pop(vm);
+        if (!isHashable(key)) {
+            runtimeError(vm, "%s is an unhashable type", typeofValue(key));
+            return false;
+        }
+
+        ObjMap *map = AS_MAP(pop(vm));
+        Value result = NIL_VAL;
+        tableGet(&map->items, key, &result);
+        push(vm, result);
+        return true;
+    }
+    default: UNREACHABLE(); return false;
+    }
+#pragma GCC diagnostic pop
+}
+
+static inline bool doIndexedSet(VM *vm) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch-enum"
+    switch (OBJ_TYPE(peek(vm, 2))) {
+    case OBJ_STRING: {
+        runtimeError(vm, "Can not use index setting on strings");
+        return false;
+    }
+    case OBJ_ARRAY: {
+        Value value = pop(vm);
+        Value index_ = pop(vm);
+        ObjArray *arr = AS_ARRAY(pop(vm));
+
+        int index = isValidIndex(index_, arr->items.cnt);
+        if (index == -1) {
+            runtimeError(vm, "Can only use numbers to index arrays");
+            return false;
+        } else if (index == -2) {
+            runtimeError(vm, "can only use integers to index into arrays");
+            return false;
+        } else if (index == -3) {
+            runtimeError(vm, "index out of bounds");
+            return false;
+        }
+
+        storeToArray(arr, index, value);
+        push(vm, value);
+        return true;
+    }
+    case OBJ_MAP: {
+        Value value = peek(vm, 0);
+        Value key = peek(vm, 1);
+        if (!isHashable(key)) {
+            runtimeError(vm, "%s is an unhashable type", typeofValue(key));
+            return false;
+        }
+
+        ObjMap *map = AS_MAP(peek(vm, 2));
+        tableSet(&map->items, key, value);
+        vm->sp -= 3;
+        push(vm, value);
+        return true;
+    }
+    default: UNREACHABLE(); return false;
+    }
+#pragma GCC diagnostic pop
+}
+
+static InterpretResult run(VM *vm) {
+    CallFrame *frame = &vm->frames[vm->frameCount - 1];
+
+#define PUSH(value) (*vm->sp++ = value)
+#define POP()       (*(--vm->sp))
+#define PEEK(dist)  (*(vm->sp - 1 - dist))
 #define READ_BYTE() (*frame->ip++)
 #define READ_SHORT()                                                           \
     (frame->ip += 2, (uint16_t)((frame->ip[-2] << 8) | frame->ip[-1]))
@@ -265,7 +377,7 @@ static InterpretResult run(void) {
 #define BINARY_OP(valueType, op)                                               \
     do {                                                                       \
         if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) {                      \
-            runtimeError("Operands must be numbers");                          \
+            runtimeError(vm, "Operands must be numbers");                      \
             return INTERPRET_RUNTIME_ERR;                                      \
         }                                                                      \
         double b = AS_NUMBER(POP());                                           \
@@ -277,7 +389,7 @@ static InterpretResult run(void) {
 #define TRACE_EXECUTION()                                                      \
     do {                                                                       \
         printf("          ");                                                  \
-        for (Value *slot = vm.stack; slot < vm.sp; slot++) {                   \
+        for (Value *slot = vm->stack; slot < vm->sp; slot++) {                 \
             printf("[ ");                                                      \
             printValue(*slot);                                                 \
             printf(" ]");                                                      \
@@ -304,142 +416,43 @@ static InterpretResult run(void) {
         case OP_POP:       (void)POP(); break;
         case OP_GET_INDEX: {
             if (!isIndexable(PEEK(1))) {
-                runtimeError("%s is not an indexable type",
+                runtimeError(vm, "%s is not an indexable type",
                              typeofValue(PEEK(1)));
                 return INTERPRET_RUNTIME_ERR;
             }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch-enum"
-            switch (OBJ_TYPE(PEEK(1))) {
-            case OBJ_STRING: {
-                Value index_ = POP();
-                ObjString *str = AS_STRING(PEEK(0));
-
-                int index = isValidIndex(index_, str->length);
-                if (index == -1) {
-                    runtimeError("Can only use numbers to index strings");
-                    return INTERPRET_RUNTIME_ERR;
-                } else if (index == -2) {
-                    runtimeError("can only use integers to index into strings");
-                    return INTERPRET_RUNTIME_ERR;
-                } else if (index == -3) {
-                    runtimeError("index out of bounds");
-                    return INTERPRET_RUNTIME_ERR;
-                }
-
-                ObjString *result = copyString(str->chars + index, 1);
-                (void)POP(); // the string
-                PUSH(OBJ_VAL(result));
-            } break;
-            case OBJ_ARRAY: {
-                Value index_ = POP();
-                ObjArray *arr = AS_ARRAY(POP());
-
-                int index = isValidIndex(index_, arr->items.cnt);
-                if (index == -1) {
-                    runtimeError("Can only use numbers to index arrays");
-                    return INTERPRET_RUNTIME_ERR;
-                } else if (index == -2) {
-                    runtimeError("can only use integers to index into arrays");
-                    return INTERPRET_RUNTIME_ERR;
-                } else if (index == -3) {
-                    runtimeError("index out of bounds");
-                    return INTERPRET_RUNTIME_ERR;
-                }
-
-                PUSH(indexFromArray(arr, index));
-            } break;
-            case OBJ_MAP: {
-                Value key = POP();
-                if (!isHashable(key)) {
-                    runtimeError("%s is an unhashable type", typeofValue(key));
-                    return INTERPRET_RUNTIME_ERR;
-                }
-
-                ObjMap *map = AS_MAP(POP());
-                Value result = NIL_VAL;
-                tableGet(&map->items, key, &result);
-                PUSH(result);
-            } break;
-            default: break;
-            }
-#pragma GCC diagnostic pop
+            if (!doIndexedGet(vm)) return INTERPRET_RUNTIME_ERR;
         } break;
         case OP_SET_INDEX: {
             if (!isIndexable(PEEK(2))) {
-                runtimeError("%s is not an indexable type",
+                runtimeError(vm, "%s is not an indexable type",
                              typeofValue(PEEK(2)));
                 return INTERPRET_RUNTIME_ERR;
             }
-
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wswitch-enum"
-            switch (OBJ_TYPE(PEEK(2))) {
-            case OBJ_STRING: {
-                runtimeError("Can not use index setting on strings");
-                return INTERPRET_RUNTIME_ERR;
-            } break;
-            case OBJ_ARRAY: {
-                Value value = POP();
-                Value index_ = POP();
-                ObjArray *arr = AS_ARRAY(POP());
-
-                int index = isValidIndex(index_, arr->items.cnt);
-                if (index == -1) {
-                    runtimeError("Can only use numbers to index arrays");
-                    return INTERPRET_RUNTIME_ERR;
-                } else if (index == -2) {
-                    runtimeError("can only use integers to index into arrays");
-                    return INTERPRET_RUNTIME_ERR;
-                } else if (index == -3) {
-                    runtimeError("index out of bounds");
-                    return INTERPRET_RUNTIME_ERR;
-                }
-
-                storeToArray(arr, index, value);
-                PUSH(value);
-            } break;
-            case OBJ_MAP: {
-                Value value = PEEK(0);
-                Value key = PEEK(1);
-                if (!isHashable(key)) {
-                    runtimeError("%s is an unhashable type", typeofValue(key));
-                    return INTERPRET_RUNTIME_ERR;
-                }
-
-                ObjMap *map = AS_MAP(PEEK(2));
-                tableSet(&map->items, key, value);
-                vm.sp -= 3;
-                PUSH(value);
-            } break;
-            default: break;
-            }
-#pragma GCC diagnostic pop
+            if (!doIndexedSet(vm)) return INTERPRET_RUNTIME_ERR;
         } break;
         case OP_GET_LOCAL:  PUSH(frame->slots[READ_BYTE()]); break;
         case OP_SET_LOCAL:  frame->slots[READ_BYTE()] = PEEK(0); break;
         case OP_GET_GLOBAL: {
             int index = READ_BYTE();
-            Value value = vm.globalValues.values[index];
+            Value value = vm->globalValues.values[index];
             if (IS_EMPTY(value)) {
-                const char *name = findGlobalNameFromIndex(&vm, index);
-                runtimeError("Undefined variable '%s'", name);
+                const char *name = findGlobalNameFromIndex(vm, index);
+                runtimeError(vm, "Undefined variable '%s'", name);
                 return INTERPRET_RUNTIME_ERR;
             }
             PUSH(value);
         } break;
         case OP_DEFINE_GLOBAL: {
-            vm.globalValues.values[READ_BYTE()] = POP();
+            vm->globalValues.values[READ_BYTE()] = POP();
         } break;
         case OP_SET_GLOBAL: {
             int index = READ_BYTE();
-            if (IS_EMPTY(vm.globalValues.values[index])) {
-                const char *name = findGlobalNameFromIndex(&vm, index);
-                runtimeError("Undefined variable '%s'", name);
+            if (IS_EMPTY(vm->globalValues.values[index])) {
+                const char *name = findGlobalNameFromIndex(vm, index);
+                runtimeError(vm, "Undefined variable '%s'", name);
                 return INTERPRET_RUNTIME_ERR;
             }
-            vm.globalValues.values[index] = PEEK(0);
+            vm->globalValues.values[index] = PEEK(0);
         } break;
         case OP_GET_UPVALUE: {
             uint8_t slot = READ_BYTE();
@@ -451,7 +464,7 @@ static InterpretResult run(void) {
         } break;
         case OP_GET_PROPERTY: {
             if (!IS_INSTANCE(PEEK(0))) {
-                runtimeError("Only instances have properties");
+                runtimeError(vm, "Only instances have properties");
                 return INTERPRET_RUNTIME_ERR;
             }
 
@@ -464,13 +477,13 @@ static InterpretResult run(void) {
                 break;
             }
 
-            if (!bindMethod(instance->klass, name)) {
+            if (!bindMethod(vm, instance->klass, name)) {
                 return INTERPRET_RUNTIME_ERR;
             }
         } break;
         case OP_SET_PROPERTY: {
             if (!IS_INSTANCE(PEEK(1))) {
-                runtimeError("Only instances have fields");
+                runtimeError(vm, "Only instances have fields");
                 return INTERPRET_RUNTIME_ERR;
             }
             ObjInstance *instance = AS_INSTANCE(PEEK(1));
@@ -483,7 +496,7 @@ static InterpretResult run(void) {
             Value name = READ_CONST();
             ObjClass *superclass = AS_CLASS(POP());
 
-            if (!bindMethod(superclass, name)) return INTERPRET_RUNTIME_ERR;
+            if (!bindMethod(vm, superclass, name)) return INTERPRET_RUNTIME_ERR;
         } break;
         case OP_EQUAL: {
             Value b = POP();
@@ -504,32 +517,32 @@ static InterpretResult run(void) {
         case OP_DIVIDE:        BINARY_OP(NUMBER_VAL, /); break;
         case OP_ADD:           {
             if (IS_STRING(PEEK(0)) && IS_STRING(PEEK(1))) {
-                concatenate();
+                concatenate(vm);
             } else if (IS_NUMBER(PEEK(0)) && IS_NUMBER(PEEK(1))) {
                 double b = AS_NUMBER(POP());
                 double a = AS_NUMBER(POP());
                 PUSH(NUMBER_VAL(a + b));
             } else {
-                runtimeError("Operands must be two numbers or two strings");
+                runtimeError(vm, "Operands must be two numbers or two strings");
                 return INTERPRET_RUNTIME_ERR;
             }
         } break;
         case OP_MOD: {
             if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) {
-                runtimeError("Operands must be numbers");
+                runtimeError(vm, "Operands must be numbers");
                 return INTERPRET_RUNTIME_ERR;
             }
             double b = AS_NUMBER(POP());
             double a = AS_NUMBER(POP());
             PUSH(NUMBER_VAL(fmod(a, b)));
         } break;
-        case OP_NOT:    vm.sp[-1] = BOOL_VAL(isFalsey(vm.sp[-1])); break;
+        case OP_NOT:    vm->sp[-1] = BOOL_VAL(isFalsey(vm->sp[-1])); break;
         case OP_NEGATE: {
             if (!IS_NUMBER(PEEK(0))) {
-                runtimeError("Operand must be a number");
+                runtimeError(vm, "Operand must be a number");
                 return INTERPRET_RUNTIME_ERR;
             }
-            vm.sp[-1] = NUMBER_VAL(-AS_NUMBER(vm.sp[-1]));
+            vm->sp[-1] = NUMBER_VAL(-AS_NUMBER(vm->sp[-1]));
         } break;
         case OP_PRINT: {
 #ifdef LOX_DEBUG
@@ -555,23 +568,24 @@ static InterpretResult run(void) {
         } break;
         case OP_CALL: {
             int argCnt = READ_BYTE();
-            if (!callValue(PEEK(argCnt), argCnt)) return INTERPRET_RUNTIME_ERR;
-            frame = &vm.frames[vm.frameCount - 1];
+            if (!callValue(vm, PEEK(argCnt), argCnt))
+                return INTERPRET_RUNTIME_ERR;
+            frame = &vm->frames[vm->frameCount - 1];
         } break;
         case OP_INVOKE: {
             Value method = READ_CONST();
             int argCnt = READ_BYTE();
-            if (!invoke(method, argCnt)) return INTERPRET_RUNTIME_ERR;
-            frame = &vm.frames[vm.frameCount - 1];
+            if (!invoke(vm, method, argCnt)) return INTERPRET_RUNTIME_ERR;
+            frame = &vm->frames[vm->frameCount - 1];
         } break;
         case OP_SUPER_INVOKE: {
             Value method = READ_CONST();
             int argCnt = READ_BYTE();
             ObjClass *superclass = AS_CLASS(POP());
-            if (!invokeFromClass(superclass, method, argCnt)) {
+            if (!invokeFromClass(vm, superclass, method, argCnt)) {
                 return INTERPRET_RUNTIME_ERR;
             }
-            frame = &vm.frames[vm.frameCount - 1];
+            frame = &vm->frames[vm->frameCount - 1];
         } break;
         case OP_CLOSURE: {
             ObjFn *function = AS_FUNCTION(READ_CONST());
@@ -581,66 +595,68 @@ static InterpretResult run(void) {
                 uint8_t isLocal = READ_BYTE();
                 uint8_t index = READ_BYTE();
                 if (isLocal) {
-                    closure->upvalues[i] = captureUpvalue(frame->slots + index);
+                    closure->upvalues[i] =
+                        captureUpvalue(vm, frame->slots + index);
                 } else {
                     closure->upvalues[i] = frame->closure->upvalues[index];
                 }
             }
         } break;
         case OP_CLOSE_UPVALUE: {
-            closeUpvalues(vm.sp - 1);
+            closeUpvalues(vm, vm->sp - 1);
             (void)POP();
         } break;
         case OP_RETURN: {
             Value result = POP();
-            closeUpvalues(frame->slots);
-            vm.frameCount--;
-            if (vm.frameCount == 0) {
+            closeUpvalues(vm, frame->slots);
+            vm->frameCount--;
+            if (vm->frameCount == 0) {
                 (void)POP();
                 return INTERPRET_OK;
             }
 
-            vm.sp = frame->slots;
+            vm->sp = frame->slots;
             PUSH(result);
-            frame = &vm.frames[vm.frameCount - 1];
+            frame = &vm->frames[vm->frameCount - 1];
         } break;
         case OP_BUILD_ARRAY: {
             int cnt = READ_BYTE();
 
             ObjArray *arr = newArray();
-            pushRoot(OBJ_VAL(arr));
+            pushRoot(vm, OBJ_VAL(arr));
             for (int i = cnt - 1; i >= 0; i--) {
                 appendToArray(arr, PEEK(i));
             }
-            popRoot();
+            popRoot(vm);
 
-            vm.sp -= cnt;
+            vm->sp -= cnt;
             PUSH(OBJ_VAL(arr));
         } break;
         case OP_BUILD_MAP: {
             int cnt = READ_BYTE() * 2;
 
             ObjMap *map = newMap();
-            pushRoot(OBJ_VAL(map));
+            pushRoot(vm, OBJ_VAL(map));
             for (int i = cnt - 1; i >= 0; i -= 2) {
                 Value key = PEEK(i);
                 if (!isHashable(key)) {
-                    runtimeError("%s is an unhashable type", typeofValue(key));
+                    runtimeError(vm, "%s is an unhashable type",
+                                 typeofValue(key));
                     return INTERPRET_RUNTIME_ERR;
                 }
                 Value val = PEEK(i + 1);
                 tableSet(&map->items, key, val);
             }
-            popRoot();
+            popRoot(vm);
 
-            vm.sp -= cnt;
+            vm->sp -= cnt;
             PUSH(OBJ_VAL(map));
         } break;
         case OP_CLASS:   PUSH(OBJ_VAL(newClass(READ_STRING()))); break;
         case OP_INHERIT: {
             Value superclass = PEEK(1);
             if (!IS_CLASS(superclass)) {
-                runtimeError("Superclass must be a class");
+                runtimeError(vm, "Superclass must be a class");
                 return INTERPRET_RUNTIME_ERR;
             }
 
@@ -648,8 +664,8 @@ static InterpretResult run(void) {
             tableAddAll(&AS_CLASS(superclass)->methods, &subclass->methods);
             (void)POP(); // subclass
         } break;
-        case OP_METHOD: defineMethod(READ_CONST()); break;
-        case OP_NOP:    break;
+        case OP_METHOD: defineMethod(vm, READ_CONST()); break;
+        case OP_NOP:    UNREACHABLE(); break;
         }
     }
 
@@ -666,15 +682,15 @@ static InterpretResult run(void) {
     return INTERPRET_OK;
 }
 
-InterpretResult interpret(const char *source) {
+InterpretResult interpret(VM *vm, const char *source) {
     ObjFn *function = compile(source);
     if (function == NULL) return INTERPRET_COMPILE_ERR;
 
-    pushRoot(OBJ_VAL(function));
+    pushRoot(vm, OBJ_VAL(function));
     ObjClosure *closure = newClosure(function);
-    popRoot();
-    push(OBJ_VAL(closure));
-    call(closure, 0);
+    popRoot(vm);
+    push(vm, OBJ_VAL(closure));
+    call(vm, closure, 0);
 
-    return run();
+    return run(vm);
 }

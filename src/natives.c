@@ -175,16 +175,16 @@ static Value iterInitNative(int argc, Value *args) {
     ObjInstance *inst = AS_INSTANCE(args[-1]);
 
     ObjString *obj = CONST_STRING("obj");
-    pushRoot(OBJ_VAL(obj));
+    pushRoot(&vm, OBJ_VAL(obj));
     ObjString *idx = CONST_STRING("_index");
-    pushRoot(OBJ_VAL(idx));
+    pushRoot(&vm, OBJ_VAL(idx));
 
     // add obj and _index to the instance's fields
     tableSet(&inst->fields, OBJ_VAL(obj), args[0]);
     tableSet(&inst->fields, OBJ_VAL(idx), NUMBER_VAL(0));
 
-    popRoot(); // obj
-    popRoot(); // idx
+    popRoot(&vm); // obj
+    popRoot(&vm); // idx
 
     return OBJ_VAL(inst);
 }
@@ -288,9 +288,9 @@ static Value iterIndexNative(int argc, Value *args) {
 static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
     // add class to globals
     ObjString *kname = copyString(decl.name, decl.len);
-    pushRoot(OBJ_VAL(kname));
+    pushRoot(vm, OBJ_VAL(kname));
     ObjClass *klass = newClass(kname);
-    pushRoot(OBJ_VAL(klass));
+    pushRoot(vm, OBJ_VAL(klass));
     int index = vm->globalValues.cnt;
     writeValueArray(&vm->globalValues, OBJ_VAL(klass));
     tableSet(&vm->globalNames, OBJ_VAL(kname), NUMBER_VAL((double)index));
@@ -299,28 +299,28 @@ static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
     for (int i = 0; i < decl.numFns; i++) {
         NativeDecl fn = decl.fns[i];
         ObjString *fname = copyString(fn.name, fn.len);
-        pushRoot(OBJ_VAL(fname));
+        pushRoot(vm, OBJ_VAL(fname));
         ObjNative *native = newNative(fn.fn);
-        pushRoot(OBJ_VAL(native));
+        pushRoot(vm, OBJ_VAL(native));
         tableSet(&klass->methods, OBJ_VAL(fname), OBJ_VAL(native));
-        popRoot(); // fn name
-        popRoot(); // fn
+        popRoot(vm); // fn name
+        popRoot(vm); // fn
     }
 
-    popRoot(); // class name
-    popRoot(); // class
+    popRoot(vm); // class name
+    popRoot(vm); // class
 }
 
 static void defineNative(VM *vm, const NativeDecl decl) {
     ObjString *nativeName = copyString(decl.name, decl.len);
-    pushRoot(OBJ_VAL(nativeName));
+    pushRoot(vm, OBJ_VAL(nativeName));
     ObjNative *fn = newNative(decl.fn);
-    pushRoot(OBJ_VAL(fn));
+    pushRoot(vm, OBJ_VAL(fn));
     int index = vm->globalValues.cnt;
     writeValueArray(&vm->globalValues, OBJ_VAL(fn));
     tableSet(&vm->globalNames, OBJ_VAL(nativeName), NUMBER_VAL((double)index));
-    popRoot(); // pop native ptr
-    popRoot(); // pop native name
+    popRoot(vm); // pop native ptr
+    popRoot(vm); // pop native name
 }
 
 void defineAllNatives(VM *vm) {

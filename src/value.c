@@ -58,7 +58,7 @@ bool valuesEqual(Value a, Value b) {
     case VAL_BOOL:   return AS_BOOL(a) == AS_BOOL(b);
     case VAL_NUMBER: return AS_NUMBER(a) == AS_NUMBER(b);
     case VAL_OBJ:    return AS_OBJ(a) == AS_OBJ(b);
-    default:         return false; // unreachable
+    default:         UNREACHABLE(); return false; // unreachable
     }
 #endif
 }
@@ -104,7 +104,7 @@ static uint32_t hashObject(Obj *object) {
     case OBJ_CLOSURE:
     case OBJ_NATIVE:
     case OBJ_UPVALUE:
-    default:               printf("unreachable"); return 0;
+    default:               UNREACHABLE(); return 0;
     }
 }
 
@@ -119,7 +119,7 @@ uint32_t hashValue(Value value) {
     case VAL_EMPTY:  return 0;
     case VAL_NUMBER: return hashNumber(AS_NUMBER(value));
     case VAL_OBJ:    return hashObject(AS_OBJ(value));
-    default:         printf("unreachable"); return 0;
+    default:         UNREACHABLE(); return 0;
     }
 #endif /* ifdef NAN_BOXING */
 }
@@ -137,7 +137,7 @@ const char *typeofValue(Value value) {
     } else if (IS_OBJ(value)) {
         return ObjTypeString(OBJ_TYPE(value)) + 4;
     }
-    printf("unreachable");
+    UNREACHABLE();
     return "UNKNOWN";
 #else
     switch (value.type) {
@@ -146,7 +146,7 @@ const char *typeofValue(Value value) {
     case VAL_EMPTY:  return "EMPTY";
     case VAL_NUMBER: return "NUMBER";
     case VAL_OBJ:    return ObjTypeString(OBJ_TYPE(value)) + 4;
-    default:         printf("unreachable"); return "UNKNOWN";
+    default:         UNREACHABLE(); return "UNKNOWN";
     }
 #endif /* ifdef NAN_BOXING */
 }
@@ -164,7 +164,7 @@ int valueStringLength(Value value) {
     } else if (IS_OBJ(value)) {
         return objectStringLength(value);
     }
-    printf("unreachable");
+    UNREACHABLE();
     return -1;
 #else
     switch (value.type) {
@@ -173,7 +173,7 @@ int valueStringLength(Value value) {
     case VAL_EMPTY:  return 7;
     case VAL_NUMBER: return snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
     case VAL_OBJ:    return objectStringLength(value);
-    default:         printf("unreachable"); return -1;
+    default:         UNREACHABLE(); return -1;
     }
 #endif /* ifdef NAN_BOXING */
 }
@@ -200,11 +200,9 @@ int valueToStringX(Value value, char *buf, int offset) {
     } else if (IS_OBJ(value)) {
         return objectToStringX(value, buf, offset);
     }
-    printf("unreachable");
+    UNREACHABLE();
     return -1;
 #else
-    printf("TODO(valueStringX no NAN_BOXING\n");
-    abort();
     switch (value.type) {
     case VAL_BOOL: {
         if (AS_BOOL(value)) {
@@ -228,7 +226,7 @@ int valueToStringX(Value value, char *buf, int offset) {
         return offset + len;
     }
     case VAL_OBJ: return objectToStringX(value, buf, offset);
-    default:      printf("unreachable"); return -1;
+    default:      UNREACHABLE(); return -1;
     }
 #endif /* ifdef NAN_BOXING */
 }
