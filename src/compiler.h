@@ -5,6 +5,6 @@
 #include "vm.h"
 
 ObjFn *compile(const char *source);
-void markCompilerRoots(void);
+void markCompilerRoots(VM *vm);
 
 #endif // INCLUDE_CLOX_COMPILER_H_

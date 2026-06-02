@@ -76,10 +76,12 @@ typedef struct {
     int lineCap;
 } Chunk;
 
+typedef struct VM VM;
+
 void initChunk(Chunk *chunk);
-void freeChunk(Chunk *chunk);
-void writeChunk(Chunk *chunk, uint8_t byte, int line);
-int addConst(Chunk *chunk, Value value);
+void freeChunk(VM *vm, Chunk *chunk);
+void writeChunk(VM *vm, Chunk *chunk, uint8_t byte, int line);
+int addConst(VM *vm, Chunk *chunk, Value value);
 int getLine(Chunk *chunk, int instruction);
 
 #endif // INCLUDE_CLOX_CHUNK_H_

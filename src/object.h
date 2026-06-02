@@ -79,7 +79,7 @@ typedef struct {
     ObjString *name;
 } ObjFn;
 
-typedef Value (*NativeFn)(int argc, Value *args);
+typedef Value (*NativeFn)(VM *vm, int argc, Value *args);
 
 typedef struct {
     Obj obj;
@@ -141,35 +141,35 @@ typedef struct {
     Table items;
 } ObjMap;
 
-ObjArray *newArray();
-ObjMap *newMap();
-ObjBoundMethod *newBoundMethod(Value reciever, ObjClosure *method);
-ObjClass *newClass(ObjString *name);
-ObjClosure *newClosure(ObjFn *fn);
-ObjFn *newFunction(void);
-ObjInstance *newInstance(ObjClass *klass);
-ObjNative *newNative(NativeFn function);
-ObjUpvalue *newUpvalue(Value *slot);
-ObjError *newError(bool recoverable, const char *fmt, ...);
+ObjArray *newArray(VM *vm);
+ObjMap *newMap(VM *vm);
+ObjBoundMethod *newBoundMethod(VM *vm, Value reciever, ObjClosure *method);
+ObjClass *newClass(VM *vm, ObjString *name);
+ObjClosure *newClosure(VM *vm, ObjFn *fn);
+ObjFn *newFunction(VM *vm);
+ObjInstance *newInstance(VM *vm, ObjClass *klass);
+ObjNative *newNative(VM *vm, NativeFn function);
+ObjUpvalue *newUpvalue(VM *vm, Value *slot);
+ObjError *newError(VM *vm, bool recoverable, const char *fmt, ...);
 
 // used for dynamically allocated items
-ObjString *takeString(char *chars, int length);
+ObjString *takeString(VM *vm, char *chars, int length);
 
 // used to extend the lifetime of the string for the vm
 // ie for in the compiler as the tokens are views into the source
 // if its a static string
-ObjString *copyString(const char *chars, int length);
+ObjString *copyString(VM *vm, const char *chars, int length);
 
 // for string literals
-#define CONST_STRING(txt) copyString(txt, sizeof(txt) - 1)
+#define CONST_STRING(txt) copyString(vm, txt, sizeof(txt) - 1)
 
 void printObject(Value value);
 int objectStringLength(Value value);
 int objectToStringX(Value value, char *buf, int offset);
-ObjString *objectToString(Value value);
+ObjString *objectToString(VM *vm, Value value);
 
-static inline void appendToArray(ObjArray *arr, Value value) {
-    writeValueArray(&arr->items, value);
+static inline void appendToArray(VM *vm, ObjArray *arr, Value value) {
+    writeValueArray(vm, &arr->items, value);
 }
 
 static inline void storeToArray(ObjArray *arr, int index, Value value) {

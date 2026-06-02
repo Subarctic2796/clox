@@ -15,16 +15,18 @@ typedef struct {
     Entry *entries;
 } Table;
 
+typedef struct VM VM;
+
 void initTable(Table *table);
-void freeTable(Table *table);
+void freeTable(VM *vm, Table *table);
 bool tableGet(Table *table, Value key, Value *value);
-bool tableSet(Table *table, Value key, Value value);
+bool tableSet(VM *vm, Table *table, Value key, Value value);
 bool tableDelete(Table *table, Value key);
-void tableAddAll(Table *from, Table *to);
+void tableAddAll(VM *vm, Table *from, Table *to);
 ObjString *tableFindString(Table *table, const char *chars, int len,
                            uint32_t hash);
 
 void tableRemoveWhite(Table *table);
-void markTable(Table *table);
+void markTable(VM *vm, Table *table);
 
 #endif // INCLUDE_CLOX_TABLE_H_

@@ -9,7 +9,7 @@
 
 void initTable(Table *table) { *table = (Table){0}; }
 
-void freeTable(Table *table) {
+void freeTable(VM *vm, Table *table) {
     FREE_ARRAY(Entry, table->entries, table->cap);
     initTable(table);
 }
@@ -47,7 +47,7 @@ bool tableGet(Table *table, Value key, Value *value) {
     return true;
 }
 
-static void adjustCap(Table *table, int cap) {
+static void adjustCap(VM *vm, Table *table, int cap) {
     Entry *entries = ALLOCATE(Entry, cap);
     for (int i = 0; i < cap; i++) {
         entries[i].key = EMPTY_VAL;
@@ -70,10 +70,10 @@ static void adjustCap(Table *table, int cap) {
     table->cap = cap;
 }
 
-bool tableSet(Table *table, Value key, Value value) {
+bool tableSet(VM *vm, Table *table, Value key, Value value) {
     if (table->cnt + 1 > table->cap * TABLE_MAX_LOAD) {
         int cap = GROW_CAP(table->cap);
-        adjustCap(table, cap);
+        adjustCap(vm, table, cap);
     }
 
     Entry *entry = findEntry(table->entries, table->cap, key);
@@ -97,10 +97,10 @@ bool tableDelete(Table *table, Value key) {
     return true;
 }
 
-void tableAddAll(Table *from, Table *to) {
+void tableAddAll(VM *vm, Table *from, Table *to) {
     for (int i = 0; i < from->cap; i++) {
         Entry *entry = &from->entries[i];
-        if (!IS_EMPTY(entry->key)) tableSet(to, entry->key, entry->value);
+        if (!IS_EMPTY(entry->key)) tableSet(vm, to, entry->key, entry->value);
     }
 }
 
@@ -136,10 +136,10 @@ void tableRemoveWhite(Table *table) {
     }
 }
 
-void markTable(Table *table) {
+void markTable(VM *vm, Table *table) {
     for (int i = 0; i < table->cap; i++) {
         Entry *entry = &table->entries[i];
-        markValue(entry->key);
-        markValue(entry->value);
+        markValue(vm, entry->key);
+        markValue(vm, entry->value);
     }
 }

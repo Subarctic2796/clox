@@ -977,6 +977,9 @@ static void refreshSingleLine(struct linenoiseState *l, int flags) {
  *
  * This function is UTF-8 aware and uses display widths for positioning. */
 static void refreshMultiLine(struct linenoiseState *l, int flags) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wvariadic-macro-arguments-omitted"
+
     size_t pwidth = utf8StrWidth(l->prompt, l->plen); /* Prompt display width */
     size_t bufwidth = utf8StrWidth(l->buf, l->len);   /* Buffer display width */
     size_t poswidth = utf8StrWidth(l->buf, l->pos);   /* Cursor display width */
@@ -1075,6 +1078,7 @@ static void refreshMultiLine(struct linenoiseState *l, int flags) {
     if (write(fd, ab.b, ab.len) == -1) {
     } /* Can't recover from write error. */
     abFree(&ab);
+#pragma GCC diagnostic pop
 }
 
 /* Calls the two low level functions refreshSingleLine() or

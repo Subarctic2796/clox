@@ -65,11 +65,11 @@ void initVM(VM *vm) {
 }
 
 void freeVM(VM *vm) {
-    freeTable(&vm->globalNames);
-    freeValueArray(&vm->globalValues);
-    freeTable(&vm->strings);
+    freeTable(vm, &vm->globalNames);
+    freeValueArray(vm, &vm->globalValues);
+    freeTable(vm, &vm->strings);
     vm->initString = NULL;
-    freeObjects();
+    freeObjects(vm);
 }
 
 static const char *findGlobalNameFromIndex(const VM *vm, int index) {
@@ -114,13 +114,13 @@ static bool callValue(VM *vm, Value callee, int argCnt) {
         }
         case OBJ_CLASS: {
             ObjClass *klass = AS_CLASS(callee);
-            vm->sp[-argCnt - 1] = OBJ_VAL(newInstance(klass));
+            vm->sp[-argCnt - 1] = OBJ_VAL(newInstance(vm, klass));
             Value init = EMPTY_VAL;
             if (tableGet(&klass->methods, OBJ_VAL(vm->initString), &init)) {
                 if (IS_CLOSURE(init)) return call(vm, AS_CLOSURE(init), argCnt);
 
                 NativeFn native = AS_NATIVE(init);
-                Value result = native(argCnt, vm->sp - argCnt);
+                Value result = native(vm, argCnt, vm->sp - argCnt);
                 if (IS_ERROR(result) && !AS_ERROR(result)->recoverable) {
                     runtimeError(vm, AS_ERROR_MSG(result));
                     return false;
@@ -137,7 +137,7 @@ static bool callValue(VM *vm, Value callee, int argCnt) {
         case OBJ_CLOSURE: return call(vm, AS_CLOSURE(callee), argCnt);
         case OBJ_NATIVE:  {
             NativeFn native = AS_NATIVE(callee);
-            Value result = native(argCnt, vm->sp - argCnt);
+            Value result = native(vm, argCnt, vm->sp - argCnt);
             if (IS_ERROR(result) && !AS_ERROR(result)->recoverable) {
                 runtimeError(vm, AS_ERROR_MSG(result));
                 return false;
@@ -190,7 +190,7 @@ static bool bindMethod(VM *vm, ObjClass *klass, Value name) {
         return false;
     }
 
-    ObjBoundMethod *bound = newBoundMethod(peek(vm, 0), AS_CLOSURE(method));
+    ObjBoundMethod *bound = newBoundMethod(vm, peek(vm, 0), AS_CLOSURE(method));
     pop(vm); // pop 'this'
     push(vm, OBJ_VAL(bound));
     return true;
@@ -206,7 +206,7 @@ static ObjUpvalue *captureUpvalue(VM *vm, Value *local) {
 
     if (upvalue != NULL && upvalue->location == local) return upvalue;
 
-    ObjUpvalue *createdUpvalue = newUpvalue(local);
+    ObjUpvalue *createdUpvalue = newUpvalue(vm, local);
     createdUpvalue->next = upvalue;
 
     if (prv == NULL) {
@@ -230,7 +230,7 @@ static void closeUpvalues(VM *vm, Value *last) {
 static inline void defineMethod(VM *vm, Value name) {
     Value method = peek(vm, 0);
     ObjClass *klass = AS_CLASS(peek(vm, 1));
-    tableSet(&klass->methods, name, method);
+    tableSet(vm, &klass->methods, name, method);
     pop(vm);
 }
 
@@ -248,7 +248,7 @@ static inline void concatenate(VM *vm) {
     memcpy(chars + a->length, b->chars, b->length);
     chars[length] = '\0';
 
-    ObjString *result = takeString(chars, length);
+    ObjString *result = takeString(vm, chars, length);
     vm->sp -= 2; // pop the 2 strings ontop of the stack
     push(vm, OBJ_VAL(result));
 }
@@ -273,7 +273,7 @@ static inline bool doIndexedGet(VM *vm) {
             return false;
         }
 
-        ObjString *result = copyString(str->chars + index, 1);
+        ObjString *result = copyString(vm, str->chars + index, 1);
         pop(vm); // the string
         push(vm, OBJ_VAL(result));
         return true;
@@ -353,7 +353,7 @@ static inline bool doIndexedSet(VM *vm) {
         }
 
         ObjMap *map = AS_MAP(peek(vm, 2));
-        tableSet(&map->items, key, value);
+        tableSet(vm, &map->items, key, value);
         vm->sp -= 3;
         push(vm, value);
         return true;
@@ -487,7 +487,7 @@ static InterpretResult run(VM *vm) {
                 return INTERPRET_RUNTIME_ERR;
             }
             ObjInstance *instance = AS_INSTANCE(PEEK(1));
-            tableSet(&instance->fields, READ_CONST(), PEEK(0));
+            tableSet(vm, &instance->fields, READ_CONST(), PEEK(0));
             Value value = POP();
             (void)POP(); // instance
             PUSH(value);
@@ -589,7 +589,7 @@ static InterpretResult run(VM *vm) {
         } break;
         case OP_CLOSURE: {
             ObjFn *function = AS_FUNCTION(READ_CONST());
-            ObjClosure *closure = newClosure(function);
+            ObjClosure *closure = newClosure(vm, function);
             PUSH(OBJ_VAL(closure));
             for (int i = 0; i < closure->upvalueCnt; i++) {
                 uint8_t isLocal = READ_BYTE();
@@ -622,10 +622,10 @@ static InterpretResult run(VM *vm) {
         case OP_BUILD_ARRAY: {
             int cnt = READ_BYTE();
 
-            ObjArray *arr = newArray();
+            ObjArray *arr = newArray(vm);
             pushRoot(vm, OBJ_VAL(arr));
             for (int i = cnt - 1; i >= 0; i--) {
-                appendToArray(arr, PEEK(i));
+                appendToArray(vm, arr, PEEK(i));
             }
             popRoot(vm);
 
@@ -635,7 +635,7 @@ static InterpretResult run(VM *vm) {
         case OP_BUILD_MAP: {
             int cnt = READ_BYTE() * 2;
 
-            ObjMap *map = newMap();
+            ObjMap *map = newMap(vm);
             pushRoot(vm, OBJ_VAL(map));
             for (int i = cnt - 1; i >= 0; i -= 2) {
                 Value key = PEEK(i);
@@ -645,14 +645,14 @@ static InterpretResult run(VM *vm) {
                     return INTERPRET_RUNTIME_ERR;
                 }
                 Value val = PEEK(i + 1);
-                tableSet(&map->items, key, val);
+                tableSet(vm, &map->items, key, val);
             }
             popRoot(vm);
 
             vm->sp -= cnt;
             PUSH(OBJ_VAL(map));
         } break;
-        case OP_CLASS:   PUSH(OBJ_VAL(newClass(READ_STRING()))); break;
+        case OP_CLASS:   PUSH(OBJ_VAL(newClass(vm, READ_STRING()))); break;
         case OP_INHERIT: {
             Value superclass = PEEK(1);
             if (!IS_CLASS(superclass)) {
@@ -661,7 +661,7 @@ static InterpretResult run(VM *vm) {
             }
 
             ObjClass *subclass = AS_CLASS(PEEK(0));
-            tableAddAll(&AS_CLASS(superclass)->methods, &subclass->methods);
+            tableAddAll(vm, &AS_CLASS(superclass)->methods, &subclass->methods);
             (void)POP(); // subclass
         } break;
         case OP_METHOD: defineMethod(vm, READ_CONST()); break;
@@ -687,7 +687,7 @@ InterpretResult interpret(VM *vm, const char *source) {
     if (function == NULL) return INTERPRET_COMPILE_ERR;
 
     pushRoot(vm, OBJ_VAL(function));
-    ObjClosure *closure = newClosure(function);
+    ObjClosure *closure = newClosure(vm, function);
     popRoot(vm);
     push(vm, OBJ_VAL(closure));
     call(vm, closure, 0);

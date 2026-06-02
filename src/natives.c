@@ -29,25 +29,26 @@ typedef struct {
                          argc);                                                \
     }
 
-static Value clockNative(int argc, Value *args) {
+static Value clockNative(VM *vm, int argc, Value *args) {
+    (void)vm;
     (void)argc;
     (void)args;
     return NUMBER_VAL((double)clock() / CLOCKS_PER_SEC);
 }
 
 // append a value to the array
-static Value appendNative(int argc, Value *args) {
+static Value appendNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(2);
     if (!IS_ARRAY(args[0])) {
         return ERROR_VAL(false, "Can only append to arrays");
     }
 
-    appendToArray(AS_ARRAY(args[0]), args[1]);
+    appendToArray(vm, AS_ARRAY(args[0]), args[1]);
     return NIL_VAL;
 }
 
 // delete an item from the array or map at index
-static Value deleteNative(int argc, Value *args) {
+static Value deleteNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(2);
     if (!(IS_ARRAY(args[0]) || IS_MAP(args[0]))) {
         return ERROR_VAL(false,
@@ -86,7 +87,7 @@ static Value deleteNative(int argc, Value *args) {
 
 // clears arrays and maps so that they can
 // be reused ie setting the `cnt` to zero
-static Value clearNative(int argc, Value *args) {
+static Value clearNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
 
     if (!(IS_ARRAY(args[0]) || IS_MAP(args[0]))) {
@@ -109,7 +110,7 @@ static Value clearNative(int argc, Value *args) {
 }
 
 // returns length of a string, array or map
-static Value lenNative(int argc, Value *args) {
+static Value lenNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
 
     if (IS_STRING(args[0])) {
@@ -123,12 +124,12 @@ static Value lenNative(int argc, Value *args) {
                      "Can only take the length of strings, arrays, and maps");
 }
 
-static Value errorNative(int argc, Value *args) {
+static Value errorNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
     return ERROR_VAL(AS_BOOL(args[0]), "this is a recoverable error");
 }
 
-static Value typeofNative(int argc, Value *args) {
+static Value typeofNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
     Value v = args[0];
     if (IS_CLASS(v)) {
@@ -140,13 +141,13 @@ static Value typeofNative(int argc, Value *args) {
         char *buf = ALLOCATE(char, len + 1);
         snprintf(buf, len + 1, "%s instance", name->chars);
 
-        return OBJ_VAL(takeString(buf, len));
+        return OBJ_VAL(takeString(vm, buf, len));
     }
     const char *str = typeofValue(v);
-    return OBJ_VAL(copyString(str, (int)strnlen(str, 17)));
+    return OBJ_VAL(copyString(vm, str, (int)strnlen(str, 17)));
 }
 
-static Value iterInitNative(int argc, Value *args) {
+static Value iterInitNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
     if (!(isIndexable(args[0]) || IS_INSTANCE(args[0]))) {
         return ERROR_VAL(
@@ -175,21 +176,21 @@ static Value iterInitNative(int argc, Value *args) {
     ObjInstance *inst = AS_INSTANCE(args[-1]);
 
     ObjString *obj = CONST_STRING("obj");
-    pushRoot(&vm, OBJ_VAL(obj));
+    pushRoot(vm, OBJ_VAL(obj));
     ObjString *idx = CONST_STRING("_index");
-    pushRoot(&vm, OBJ_VAL(idx));
+    pushRoot(vm, OBJ_VAL(idx));
 
     // add obj and _index to the instance's fields
-    tableSet(&inst->fields, OBJ_VAL(obj), args[0]);
-    tableSet(&inst->fields, OBJ_VAL(idx), NUMBER_VAL(0));
+    tableSet(vm, &inst->fields, OBJ_VAL(obj), args[0]);
+    tableSet(vm, &inst->fields, OBJ_VAL(idx), NUMBER_VAL(0));
 
-    popRoot(&vm); // obj
-    popRoot(&vm); // idx
+    popRoot(vm); // obj
+    popRoot(vm); // idx
 
     return OBJ_VAL(inst);
 }
 
-static Value iterNextNative(int argc, Value *args) {
+static Value iterNextNative(VM *vm, int argc, Value *args) {
 #define OBJ_HASH 3343205242
 #define IDX_HASH 1364385362
 
@@ -223,7 +224,7 @@ static Value iterNextNative(int argc, Value *args) {
 #pragma GCC diagnostic pop
 
     // update index
-    tableSet(&iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + 1));
+    tableSet(vm, &iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + 1));
 
     return result;
 
@@ -231,7 +232,7 @@ static Value iterNextNative(int argc, Value *args) {
 #undef IDX_HASH
 }
 
-static Value iterValueNative(int argc, Value *args) {
+static Value iterValueNative(VM *vm, int argc, Value *args) {
 #define OBJ_HASH 3343205242
 #define IDX_HASH 1364385362
 
@@ -250,7 +251,7 @@ static Value iterValueNative(int argc, Value *args) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (OBJ_TYPE(obj)) {
-    case OBJ_STRING: return OBJ_VAL(copyString(AS_CSTRING(obj) + index, 1));
+    case OBJ_STRING: return OBJ_VAL(copyString(vm, AS_CSTRING(obj) + index, 1));
     case OBJ_ARRAY:  return AS_ARRAY(obj)->items.values[index];
     case OBJ_MAP:    return AS_MAP(obj)->items.entries[index].value;
     default:         return NIL_VAL;
@@ -263,7 +264,7 @@ static Value iterValueNative(int argc, Value *args) {
 #undef IDX_HASH
 }
 
-static Value iterIndexNative(int argc, Value *args) {
+static Value iterIndexNative(VM *vm, int argc, Value *args) {
 #define OBJ_HASH 3343205242
 #define IDX_HASH 1364385362
 
@@ -287,22 +288,22 @@ static Value iterIndexNative(int argc, Value *args) {
 
 static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
     // add class to globals
-    ObjString *kname = copyString(decl.name, decl.len);
+    ObjString *kname = copyString(vm, decl.name, decl.len);
     pushRoot(vm, OBJ_VAL(kname));
-    ObjClass *klass = newClass(kname);
+    ObjClass *klass = newClass(vm, kname);
     pushRoot(vm, OBJ_VAL(klass));
     int index = vm->globalValues.cnt;
-    writeValueArray(&vm->globalValues, OBJ_VAL(klass));
-    tableSet(&vm->globalNames, OBJ_VAL(kname), NUMBER_VAL((double)index));
+    writeValueArray(vm, &vm->globalValues, OBJ_VAL(klass));
+    tableSet(vm, &vm->globalNames, OBJ_VAL(kname), NUMBER_VAL((double)index));
 
     // add native functions to the class
     for (int i = 0; i < decl.numFns; i++) {
         NativeDecl fn = decl.fns[i];
-        ObjString *fname = copyString(fn.name, fn.len);
+        ObjString *fname = copyString(vm, fn.name, fn.len);
         pushRoot(vm, OBJ_VAL(fname));
-        ObjNative *native = newNative(fn.fn);
+        ObjNative *native = newNative(vm, fn.fn);
         pushRoot(vm, OBJ_VAL(native));
-        tableSet(&klass->methods, OBJ_VAL(fname), OBJ_VAL(native));
+        tableSet(vm, &klass->methods, OBJ_VAL(fname), OBJ_VAL(native));
         popRoot(vm); // fn name
         popRoot(vm); // fn
     }
@@ -312,13 +313,14 @@ static void defineNativeClass(VM *vm, const NativeClassDecl decl) {
 }
 
 static void defineNative(VM *vm, const NativeDecl decl) {
-    ObjString *nativeName = copyString(decl.name, decl.len);
+    ObjString *nativeName = copyString(vm, decl.name, decl.len);
     pushRoot(vm, OBJ_VAL(nativeName));
-    ObjNative *fn = newNative(decl.fn);
+    ObjNative *fn = newNative(vm, decl.fn);
     pushRoot(vm, OBJ_VAL(fn));
     int index = vm->globalValues.cnt;
-    writeValueArray(&vm->globalValues, OBJ_VAL(fn));
-    tableSet(&vm->globalNames, OBJ_VAL(nativeName), NUMBER_VAL((double)index));
+    writeValueArray(vm, &vm->globalValues, OBJ_VAL(fn));
+    tableSet(vm, &vm->globalNames, OBJ_VAL(nativeName),
+             NUMBER_VAL((double)index));
     popRoot(vm); // pop native ptr
     popRoot(vm); // pop native name
 }

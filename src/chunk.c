@@ -4,7 +4,7 @@
 
 void initChunk(Chunk *chunk) { *chunk = (Chunk){0}; }
 
-void writeChunk(Chunk *chunk, uint8_t byte, int line) {
+void writeChunk(VM *vm, Chunk *chunk, uint8_t byte, int line) {
     // grow code
     if (chunk->cap < chunk->cnt + 1) {
         int oldCap = chunk->cap;
@@ -28,8 +28,8 @@ void writeChunk(Chunk *chunk, uint8_t byte, int line) {
     chunk->lines[chunk->lineCnt++] = ((LineInfo){chunk->lineCnt - 1, line});
 }
 
-int addConst(Chunk *chunk, Value value) {
-    writeValueArray(&chunk->constants, value);
+int addConst(VM *vm, Chunk *chunk, Value value) {
+    writeValueArray(vm, &chunk->constants, value);
     return chunk->constants.cnt - 1;
 }
 
@@ -51,9 +51,9 @@ int getLine(Chunk *chunk, int instruction) {
     }
 }
 
-void freeChunk(Chunk *chunk) {
+void freeChunk(VM *vm, Chunk *chunk) {
     FREE_ARRAY(uint8_t, chunk->code, chunk->cap);
     FREE_ARRAY(LineInfo, chunk->lines, chunk->lineCap);
-    freeValueArray(&chunk->constants);
+    freeValueArray(vm, &chunk->constants);
     initChunk(chunk);
 }

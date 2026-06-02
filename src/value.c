@@ -8,12 +8,12 @@
 
 void initValueArray(ValueArray *array) { *array = (ValueArray){0}; }
 
-void freeValueArray(ValueArray *array) {
+void freeValueArray(VM *vm, ValueArray *array) {
     FREE_ARRAY(Value, array->values, array->cap);
     initValueArray(array);
 }
 
-void writeValueArray(ValueArray *array, Value value) {
+void writeValueArray(VM *vm, ValueArray *array, Value value) {
     if (array->cap < array->cnt + 1) {
         size_t oldCap = array->cap;
         array->cap = GROW_CAP(oldCap);
@@ -231,10 +231,10 @@ int valueToStringX(Value value, char *buf, int offset) {
 #endif /* ifdef NAN_BOXING */
 }
 
-ObjString *valueToString(Value value) {
+ObjString *valueToString(VM *vm, Value value) {
     int len = valueStringLength(value);
     char *buf = ALLOCATE(char, len + 1);
     valueToStringX(value, buf, 0);
     buf[len] = '\0';
-    return takeString(buf, len);
+    return takeString(vm, buf, len);
 }

@@ -93,23 +93,25 @@ typedef struct {
 
 #endif // NAN_BOXING
 
-#define ERROR_VAL(...) OBJ_VAL(newError(__VA_ARGS__))
+#define ERROR_VAL(...) OBJ_VAL(newError(vm, __VA_ARGS__))
 
 typedef struct {
     int cap, cnt;
     Value *values;
 } ValueArray;
 
+typedef struct VM VM;
+
 bool valuesEqual(Value a, Value b);
 void initValueArray(ValueArray *array);
-void writeValueArray(ValueArray *array, Value value);
-void freeValueArray(ValueArray *array);
+void writeValueArray(VM *vm, ValueArray *array, Value value);
+void freeValueArray(VM *vm, ValueArray *array);
 void printValue(Value value);
 uint32_t hashValue(Value value);
 const char *typeofValue(Value value);
 
 int valueStringLength(Value value);
 int valueToStringX(Value value, char *buf, int offset);
-ObjString *valueToString(Value value);
+ObjString *valueToString(VM *vm, Value value);
 
 #endif // INCLUDE_CLOX_VALUE_H_

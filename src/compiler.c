@@ -159,7 +159,7 @@ static inline bool match(TokenType type) {
 }
 
 static inline void emitByte(Compiler *c, uint8_t byte) {
-    writeChunk(curChunk(c), byte, parser.prv.line);
+    writeChunk(&vm, curChunk(c), byte, parser.prv.line);
 }
 
 static inline void emitBytes(Compiler *c, uint8_t byte1, uint8_t byte2) {
@@ -218,7 +218,7 @@ static uint8_t makeConstant(Compiler *c, Value value) {
     // add constant
     // make sure not collected
     if (IS_OBJ(value)) pushRoot(&vm, value);
-    int constIdx = addConst(curChunk(c), value);
+    int constIdx = addConst(&vm, curChunk(c), value);
     // its safe so can remove it from temp roots
     if (IS_OBJ(value)) popRoot(&vm);
 
@@ -227,7 +227,7 @@ static uint8_t makeConstant(Compiler *c, Value value) {
         return 0;
     }
 
-    tableSet(&c->constantsTable, value, NUMBER_VAL(constIdx));
+    tableSet(&vm, &c->constantsTable, value, NUMBER_VAL(constIdx));
     return (uint8_t)constIdx;
 }
 
@@ -249,11 +249,11 @@ static void initCompiler(Compiler *compiler, FunctionType type) {
     *compiler = (Compiler){0};
     compiler->enclosing = current;
     compiler->type = type;
-    compiler->fn = newFunction();
+    compiler->fn = newFunction(&vm);
     current = compiler;
 
     if (type != TYPE_SCRIPT) {
-        current->fn->name = copyString(parser.prv.start, parser.prv.len);
+        current->fn->name = copyString(&vm, parser.prv.start, parser.prv.len);
     }
 
     Local *local = &current->locals[current->localCount++];
@@ -278,7 +278,7 @@ static ObjFn *endCompiler(void) {
     }
 #endif
     // free constants table
-    freeTable(&current->constantsTable);
+    freeTable(&vm, &current->constantsTable);
     current = current->enclosing;
     return fn;
 }
@@ -402,7 +402,7 @@ typedef enum {
 
 static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
                                       uint8_t *classGlobal) {
-    ObjString *ident = copyString(name->start, name->len);
+    ObjString *ident = copyString(&vm, name->start, name->len);
     switch (type) {
     case IDENT_IDENT:       return makeConstant(c, OBJ_VAL(ident));
     case IDENT_CLASS_LOCAL: return makeConstant(c, OBJ_VAL(ident));
@@ -415,8 +415,9 @@ static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
         pushRoot(&vm, OBJ_VAL(ident));
 
         uint8_t newIndex = (uint8_t)vm.globalValues.cnt;
-        writeValueArray(&vm.globalValues, EMPTY_VAL);
-        tableSet(&vm.globalNames, OBJ_VAL(ident), NUMBER_VAL((double)newIndex));
+        writeValueArray(&vm, &vm.globalValues, EMPTY_VAL);
+        tableSet(&vm, &vm.globalNames, OBJ_VAL(ident),
+                 NUMBER_VAL((double)newIndex));
 
         popRoot(&vm);
 
@@ -431,8 +432,9 @@ static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
         pushRoot(&vm, OBJ_VAL(ident));
 
         uint8_t newIndex = (uint8_t)vm.globalValues.cnt;
-        writeValueArray(&vm.globalValues, EMPTY_VAL);
-        tableSet(&vm.globalNames, OBJ_VAL(ident), NUMBER_VAL((double)newIndex));
+        writeValueArray(&vm, &vm.globalValues, EMPTY_VAL);
+        tableSet(&vm, &vm.globalNames, OBJ_VAL(ident),
+                 NUMBER_VAL((double)newIndex));
 
         popRoot(&vm);
 
@@ -670,7 +672,7 @@ static void or_(bool canAssign) {
 static void string(bool canAssign) {
     (void)canAssign;
     Token prv = parser.prv;
-    emitConstant(current, OBJ_VAL(copyString(prv.start + 1, prv.len - 2)));
+    emitConstant(current, OBJ_VAL(copyString(&vm, prv.start + 1, prv.len - 2)));
 }
 
 static void array(bool canAssign) {
@@ -1421,11 +1423,11 @@ ObjFn *compile(const char *source) {
     return parser.hadError ? NULL : function;
 }
 
-void markCompilerRoots(void) {
+void markCompilerRoots(VM *vm) {
     Compiler *compiler = current;
     while (compiler != NULL) {
-        markObject((Obj *)compiler->fn);
-        markTable(&compiler->constantsTable);
+        markObject(vm, (Obj *)compiler->fn);
+        markTable(vm, &compiler->constantsTable);
         compiler = compiler->enclosing;
     }
 }
