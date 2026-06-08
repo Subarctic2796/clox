@@ -100,11 +100,7 @@ static Value clearNative(VM *vm, int argc, Value *args) {
     if (IS_ARRAY(v)) {
         AS_ARRAY(v)->items.cnt = 0;
     } else if (IS_MAP(v)) {
-        Table m = AS_MAP(v)->items;
-        for (int i = 0; i < m.cap; i++) {
-            m.entries[i] = (Entry){EMPTY_VAL, NIL_VAL};
-        }
-        m.cnt = 0;
+        tableClear(&AS_MAP(v)->items);
     }
     return NIL_VAL;
 }
@@ -164,7 +160,7 @@ static Value iterInitNative(VM *vm, int argc, Value *args) {
         }
         if (!tableGet(&methods, OBJ_VAL(CONST_STRING("value")), &dummy)) {
             return ERROR_VAL(
-                false, "Object must have a valu method to be an iterator");
+                false, "Object must have a value method to be an iterator");
         }
         if (!tableGet(&methods, OBJ_VAL(CONST_STRING("index")), &dummy)) {
             return ERROR_VAL(

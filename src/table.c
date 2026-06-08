@@ -1,8 +1,6 @@
-#include <string.h>
-
+#include "table.h"
 #include "memory.h"
 #include "object.h"
-#include "table.h"
 #include "value.h"
 
 #define TABLE_MAX_LOAD 0.75
@@ -50,8 +48,7 @@ bool tableGet(Table *table, Value key, Value *value) {
 static void adjustCap(VM *vm, Table *table, int cap) {
     Entry *entries = ALLOCATE(Entry, cap);
     for (int i = 0; i < cap; i++) {
-        entries[i].key = EMPTY_VAL;
-        entries[i].value = NIL_VAL;
+        entries[i] = (Entry){EMPTY_VAL, NIL_VAL};
     }
 
     table->cnt = 0;
@@ -60,8 +57,7 @@ static void adjustCap(VM *vm, Table *table, int cap) {
         if (IS_EMPTY(entry->key)) continue;
 
         Entry *dest = findEntry(entries, cap, entry->key);
-        dest->key = entry->key;
-        dest->value = entry->value;
+        *dest = (Entry){entry->key, entry->value};
         table->cnt++;
     }
 
@@ -79,8 +75,7 @@ bool tableSet(VM *vm, Table *table, Value key, Value value) {
     Entry *entry = findEntry(table->entries, table->cap, key);
     bool isNewKey = IS_EMPTY(entry->key);
     if (isNewKey && IS_NIL(entry->value)) table->cnt++;
-    entry->key = key;
-    entry->value = value;
+    *entry = (Entry){key, value};
     return isNewKey;
 }
 
@@ -92,9 +87,15 @@ bool tableDelete(Table *table, Value key) {
     if (IS_EMPTY(entry->key)) return false;
 
     // place tombstone in the entry
-    entry->key = EMPTY_VAL;
-    entry->value = BOOL_VAL(true);
+    *entry = (Entry){EMPTY_VAL, BOOL_VAL(true)};
     return true;
+}
+
+void tableClear(Table *table) {
+    for (int i = 0; i < table->cnt; i++) {
+        table->entries[i] = (Entry){EMPTY_VAL, NIL_VAL};
+    }
+    table->cnt = 0;
 }
 
 void tableAddAll(VM *vm, Table *from, Table *to) {

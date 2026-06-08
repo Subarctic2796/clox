@@ -212,14 +212,8 @@ int valueToStringX(Value value, char *buf, int offset) {
         snprintf(buf + offset, 6, "false");
         return offset + 5;
     }
-    case VAL_NIL: {
-        snprintf(buf + offset, 4, "nil");
-        return offset + 3;
-    }
-    case VAL_EMPTY: {
-        snprintf(buf + offset, 8, "<empty>");
-        return offset + 7;
-    }
+    case VAL_NIL:    snprintf(buf + offset, 4, "nil"); return offset + 3;
+    case VAL_EMPTY:  snprintf(buf + offset, 8, "<empty>"); return offset + 7;
     case VAL_NUMBER: {
         int len = snprintf(NULL, 0, "%.14g", AS_NUMBER(value));
         snprintf(buf + offset, len + 1, "%.14g", AS_NUMBER(value));

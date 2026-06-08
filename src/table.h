@@ -22,6 +22,7 @@ void freeTable(VM *vm, Table *table);
 bool tableGet(Table *table, Value key, Value *value);
 bool tableSet(VM *vm, Table *table, Value key, Value value);
 bool tableDelete(Table *table, Value key);
+void tableClear(Table *table);
 void tableAddAll(VM *vm, Table *from, Table *to);
 ObjString *tableFindString(Table *table, const char *chars, int len,
                            uint32_t hash);

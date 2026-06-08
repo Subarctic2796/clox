@@ -399,9 +399,7 @@ static InterpretResult run(VM *vm) {
                         (int)(frame->ip - frame->closure->fn->chunk.code));    \
     } while (false)
 #else
-#define TRACE_EXECUTION()                                                      \
-    do {                                                                       \
-    } while (false)
+#define TRACE_EXECUTION()
 #endif
 
     OpCode inst = OP_NOP;

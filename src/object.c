@@ -214,7 +214,6 @@ void printObject(Value value) {
     case OBJ_ERROR:    printf("%s", AS_ERROR_MSG(value)); break;
     case OBJ_UPVALUE:  printf("upvalue"); break;
     }
-    UNREACHABLE();
 }
 
 static inline int fnStrLen(const ObjFn *fn) {

@@ -20,7 +20,7 @@ class LinkedList {
     }
 }
 
-class LLiter {
+class LLiter < Iter {
     init(ll) {
         this.list = ll;
         this.val = nil;
