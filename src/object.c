@@ -165,6 +165,14 @@ ObjArray *newArray(VM *vm) {
     return arr;
 }
 
+ObjRange *newRange(VM *vm, double start, double stop, double step) {
+    ObjRange *range = ALLOCATE_OBJ(ObjRange, OBJ_RANGE);
+    range->start = start;
+    range->stop = stop;
+    range->step = step;
+    return range;
+}
+
 static inline void printFunction(const ObjFn *func) {
     if (func->name == NULL) {
         printf("<script>");
@@ -199,6 +207,10 @@ void printObject(Value value) {
             printValue(entry.value);
         }
         printf("}");
+    } break;
+    case OBJ_RANGE: {
+        const ObjRange *range = AS_RANGE(value);
+        printf("range(%g, %g, %g)", range->start, range->stop, range->step);
     } break;
     case OBJ_INSTANCE:
         printf("%s instance", AS_INSTANCE(value)->klass->name->chars);
@@ -246,6 +258,11 @@ int objectStringLength(Value value) {
             total += valueStringLength(entry.value);
         }
         return total;
+    }
+    case OBJ_RANGE: {
+        const ObjRange *range = AS_RANGE(value);
+        return snprintf(NULL, 0, "range(%g, %g, %g)", range->start, range->stop,
+                        range->step);
     }
     case OBJ_UPVALUE:      return 7;
     case OBJ_NATIVE:       return 11;
@@ -323,6 +340,14 @@ int objectToStringX(Value value, char *buf, int offset) {
         const ObjString *name = AS_INSTANCE(value)->klass->name;
         int len = name->length + 9;
         snprintf(buf + offset, len + 1, "%s instance", name->chars);
+        return offset + len;
+    }
+    case OBJ_RANGE: {
+        const ObjRange *range = AS_RANGE(value);
+        int len = snprintf(NULL, 0, "range(%g, %g, %g)", range->start,
+                           range->stop, range->step);
+        snprintf(buf + offset, len + 1, "range(%g, %g, %g)", range->start,
+                 range->stop, range->step);
         return offset + len;
     }
     case OBJ_BOUND_METHOD:

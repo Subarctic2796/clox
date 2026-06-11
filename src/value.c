@@ -98,6 +98,7 @@ static uint32_t hashObject(Obj *object) {
         uint32_t klassHash = ((ObjInstance *)object)->klass->name->hash;
         return klassHash ^ hashBits((uint64_t)(uintptr_t)object);
     }
+    case OBJ_RANGE:
     case OBJ_BOUND_METHOD:
     case OBJ_ARRAY:
     case OBJ_MAP:

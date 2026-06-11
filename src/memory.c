@@ -107,6 +107,7 @@ static void blackenObject(VM *vm, Obj *object) {
     case OBJ_UPVALUE: markValue(vm, ((ObjUpvalue *)object)->closed); break;
     case OBJ_ARRAY:   markArray(vm, &((ObjArray *)object)->items); break;
     case OBJ_MAP:     markTable(vm, &((ObjMap *)object)->items); break;
+    case OBJ_RANGE:
     case OBJ_NATIVE:
     case OBJ_STRING:  break;
     }
@@ -159,6 +160,7 @@ static void freeObject(VM *vm, Obj *object) {
     case OBJ_UPVALUE:      FREE(ObjUpvalue, object); break;
     case OBJ_BOUND_METHOD: FREE(ObjBoundMethod, object); break;
     case OBJ_ERROR:        FREE(ObjError, object); break;
+    case OBJ_RANGE:        FREE(ObjRange, object); break;
     }
 }
 

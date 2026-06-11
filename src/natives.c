@@ -1,3 +1,4 @@
+#include <math.h>
 #include <time.h>
 
 #include "common.h"
@@ -143,26 +144,54 @@ static Value typeofNative(VM *vm, int argc, Value *args) {
     return OBJ_VAL(copyString(vm, str, (int)strnlen(str, 17)));
 }
 
+static Value rangeNative(VM *vm, int argc, Value *args) {
+    CHECK_ARITY_NATIVE(3);
+
+    Value start_ = args[0];
+    Value stop_ = args[1];
+    Value step_ = args[2];
+    if (!IS_NUMBER(start_) || !IS_NUMBER(stop_) || !IS_NUMBER(step_)) {
+        return ERROR_VAL(false, "Arguments must be numbers");
+    }
+
+    double start = AS_NUMBER(start_);
+    double stop = AS_NUMBER(stop_);
+    double step = AS_NUMBER(step_);
+    if ((trunc(start) != start) || (trunc(stop) != stop) ||
+        (trunc(step) != step)) {
+        return ERROR_VAL(false, "Arguments must be integers");
+    }
+
+    // TODO: actually make this check work
+    if (stop > start && step >= 0) {
+        return ERROR_VAL(
+            false, "stop is larger than start and step is a positive number");
+    }
+
+    return OBJ_VAL(newRange(vm, start, stop, step));
+}
+
 static Value iterInitNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
     if (!(isIndexable(args[0]) || IS_INSTANCE(args[0]))) {
         return ERROR_VAL(
-            false, "Can only create iterators from strings, arrays, and maps");
+            false,
+            "Can only create iterators from strings, arrays, maps, ranges, or "
+            "classes that have next, value, and index methods");
     }
 
     if (IS_INSTANCE(args[0])) {
         ObjInstance *obj = AS_INSTANCE(args[0]);
         Table methods = obj->klass->methods;
-        Value dummy;
-        if (!tableGet(&methods, OBJ_VAL(CONST_STRING("next")), &dummy)) {
+        if (!tableContains(&methods, OBJ_VAL(CONST_STRING("next")))) {
             return ERROR_VAL(
                 false, "Object must have a next method to be an iterator");
         }
-        if (!tableGet(&methods, OBJ_VAL(CONST_STRING("value")), &dummy)) {
+        if (!tableContains(&methods, OBJ_VAL(CONST_STRING("value")))) {
             return ERROR_VAL(
                 false, "Object must have a value method to be an iterator");
         }
-        if (!tableGet(&methods, OBJ_VAL(CONST_STRING("index")), &dummy)) {
+        if (!tableContains(&methods, OBJ_VAL(CONST_STRING("index")))) {
             return ERROR_VAL(
                 false, "Object must have a index method to be an iterator");
         }
@@ -178,7 +207,10 @@ static Value iterInitNative(VM *vm, int argc, Value *args) {
 
     // add obj and _index to the instance's fields
     tableSet(vm, &inst->fields, OBJ_VAL(obj), args[0]);
-    tableSet(vm, &inst->fields, OBJ_VAL(idx), NUMBER_VAL(0));
+
+    Value index = NUMBER_VAL(0);
+    if (IS_RANGE(args[0])) index = NUMBER_VAL(AS_RANGE(args[0])->start);
+    tableSet(vm, &inst->fields, OBJ_VAL(idx), index);
 
     popRoot(vm); // obj
     popRoot(vm); // idx
@@ -201,6 +233,7 @@ static Value iterNextNative(VM *vm, int argc, Value *args) {
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
 
     int index = AS_NUMBER(idx);
+    int n = 1;
     Value result = FALSE_VAL;
 
 #pragma GCC diagnostic push
@@ -208,7 +241,12 @@ static Value iterNextNative(VM *vm, int argc, Value *args) {
     switch (OBJ_TYPE(obj)) {
     case OBJ_STRING: result = BOOL_VAL(index < AS_STRING(obj)->length); break;
     case OBJ_ARRAY:  result = BOOL_VAL(index < AS_ARRAY(obj)->items.cnt); break;
-    case OBJ_MAP:    {
+    case OBJ_RANGE:  {
+        // TODO: make range(10, 0, -1) work
+        result = BOOL_VAL(index < AS_RANGE(obj)->stop);
+        n = (int)AS_RANGE(obj)->step;
+    } break;
+    case OBJ_MAP: {
         Table map = AS_MAP(obj)->items;
         for (; index < map.cap; index++) {
             if (!IS_EMPTY(map.entries[index].key)) break;
@@ -220,7 +258,7 @@ static Value iterNextNative(VM *vm, int argc, Value *args) {
 #pragma GCC diagnostic pop
 
     // update index
-    tableSet(vm, &iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + 1));
+    tableSet(vm, &iter->fields, OBJ_VAL(_idxStr), NUMBER_VAL(index + n));
 
     return result;
 
@@ -242,15 +280,17 @@ static Value iterValueNative(VM *vm, int argc, Value *args) {
     tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
 
-    int index = AS_NUMBER(idx) - 1;
+    int index = AS_NUMBER(idx);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (OBJ_TYPE(obj)) {
-    case OBJ_STRING: return OBJ_VAL(copyString(vm, AS_CSTRING(obj) + index, 1));
-    case OBJ_ARRAY:  return AS_ARRAY(obj)->items.values[index];
-    case OBJ_MAP:    return AS_MAP(obj)->items.entries[index].value;
-    default:         return NIL_VAL;
+    case OBJ_STRING:
+        return OBJ_VAL(copyString(vm, AS_CSTRING(obj) + (index - 1), 1));
+    case OBJ_ARRAY: return AS_ARRAY(obj)->items.values[index - 1];
+    case OBJ_MAP:   return AS_MAP(obj)->items.entries[index - 1].value;
+    case OBJ_RANGE: return NUMBER_VAL(index - AS_RANGE(obj)->step);
+    default:        return NIL_VAL;
     }
 #pragma GCC diagnostic pop
 
@@ -274,9 +314,13 @@ static Value iterIndexNative(VM *vm, int argc, Value *args) {
     tableGet(&iter->fields, OBJ_VAL(_idxStr), &idx);
     tableGet(&iter->fields, OBJ_VAL(_objStr), &obj);
 
-    double index = AS_NUMBER(idx) - 1;
-    if (IS_MAP(obj)) return AS_MAP(obj)->items.entries[(int)index].key;
-    return NUMBER_VAL(index);
+    double index = AS_NUMBER(idx);
+    if (IS_MAP(obj)) return AS_MAP(obj)->items.entries[(int)index - 1].key;
+    if (IS_RANGE(obj)) {
+        double step = AS_RANGE(obj)->step;
+        return NUMBER_VAL((index - step) / step);
+    }
+    return NUMBER_VAL(index - 1);
 
 #undef OBJ_HASH
 #undef IDX_HASH
@@ -326,7 +370,7 @@ void defineAllNatives(VM *vm) {
         NATIVE_FN("len", lenNative),       NATIVE_FN("clock", clockNative),
         NATIVE_FN("error", errorNative),   NATIVE_FN("clear", clearNative),
         NATIVE_FN("delete", deleteNative), NATIVE_FN("append", appendNative),
-        NATIVE_FN("typeof", typeofNative),
+        NATIVE_FN("typeof", typeofNative), NATIVE_FN("range", rangeNative),
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_FNS); i++) {

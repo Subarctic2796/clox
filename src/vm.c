@@ -258,8 +258,8 @@ static inline bool doIndexedGet(VM *vm) {
 #pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (OBJ_TYPE(peek(vm, 1))) {
     case OBJ_STRING: {
-        Value index_ = pop(vm);
-        ObjString *str = AS_STRING(peek(vm, 0));
+        Value index_ = peek(vm, 0);
+        ObjString *str = AS_STRING(peek(vm, 1));
 
         int index = isValidIndex(index_, str->length);
         if (index == -1) {
@@ -271,16 +271,33 @@ static inline bool doIndexedGet(VM *vm) {
         } else if (index == -3) {
             runtimeError(vm, "index out of bounds");
             return false;
+        } else if (index == -4) {
+            ObjRange *range = AS_RANGE(index_);
+            int stop =
+                (int)range->stop < str->length ? range->stop : str->length;
+
+            int len = (stop - range->start) / range->step;
+            char *buf = ALLOCATE(char, len + 1);
+            int n = 0;
+            for (int i = range->start; i < stop; i += range->step) {
+                buf[n++] = str->chars[i];
+            }
+            buf[len] = '\0';
+
+            ObjString *result = takeString(vm, buf, len);
+            vm->sp -= 2; // pop index and string
+            push(vm, OBJ_VAL(result));
+            return true;
         }
 
         ObjString *result = copyString(vm, str->chars + index, 1);
-        pop(vm); // the string
+        vm->sp -= 2; // pop index and string
         push(vm, OBJ_VAL(result));
         return true;
     }
     case OBJ_ARRAY: {
-        Value index_ = pop(vm);
-        ObjArray *arr = AS_ARRAY(pop(vm));
+        Value index_ = peek(vm, 0);
+        ObjArray *arr = AS_ARRAY(peek(vm, 1));
 
         int index = isValidIndex(index_, arr->items.cnt);
         if (index == -1) {
@@ -292,8 +309,23 @@ static inline bool doIndexedGet(VM *vm) {
         } else if (index == -3) {
             runtimeError(vm, "index out of bounds");
             return false;
+        } else if (index == -4) {
+            ObjRange *range = AS_RANGE(index_);
+            int stop = (int)range->stop < arr->items.cnt ? range->stop
+                                                         : arr->items.cnt;
+            ObjArray *subarr = newArray(vm);
+            pushRoot(vm, OBJ_VAL(subarr));
+            for (int i = range->start; i < stop; i += range->step) {
+                appendToArray(vm, subarr, indexFromArray(arr, i));
+            }
+            popRoot(vm);
+
+            vm->sp -= 2; // pop index and array
+            push(vm, indexFromArray(arr, index));
+            return true;
         }
 
+        vm->sp -= 2; // pop index and array
         push(vm, indexFromArray(arr, index));
         return true;
     }
@@ -310,6 +342,31 @@ static inline bool doIndexedGet(VM *vm) {
         push(vm, result);
         return true;
     }
+    case OBJ_RANGE: {
+        Value index_ = pop(vm);
+        ObjRange *range = AS_RANGE(pop(vm));
+
+        int index = isValidIndex(
+            index_, floor((range->stop - range->start) / range->step) + 1);
+        if (index == -1) {
+            runtimeError(vm, "Can only use numbers to index ranges");
+            return false;
+        } else if (index == -2) {
+            runtimeError(vm, "can only use integers to index into ranges");
+            return false;
+        } else if (index == -3) {
+            runtimeError(vm, "index out of range");
+            return false;
+        } else if (index == -4) {
+            printf("TODO: allow indexed getting using ranges for ranges\n");
+            printf("TODO: taking a range of a range in python returns a new "
+                   "range\n");
+            abort();
+        }
+
+        push(vm, NUMBER_VAL(index * range->step + range->start));
+        return true;
+    }
     default: UNREACHABLE(); return false;
     }
 #pragma GCC diagnostic pop
@@ -319,17 +376,19 @@ static inline bool doIndexedSet(VM *vm) {
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
     switch (OBJ_TYPE(peek(vm, 2))) {
-    case OBJ_STRING: {
+    case OBJ_STRING:
         runtimeError(vm, "Can not use index setting on strings");
         return false;
-    }
+    case OBJ_RANGE:
+        runtimeError(vm, "Can not use index setting on ranges");
+        return false;
     case OBJ_ARRAY: {
         Value value = pop(vm);
         Value index_ = pop(vm);
         ObjArray *arr = AS_ARRAY(pop(vm));
 
         int index = isValidIndex(index_, arr->items.cnt);
-        if (index == -1) {
+        if (index == -1 || index == -4) {
             runtimeError(vm, "Can only use numbers to index arrays");
             return false;
         } else if (index == -2) {

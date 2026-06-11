@@ -45,6 +45,14 @@ bool tableGet(Table *table, Value key, Value *value) {
     return true;
 }
 
+bool tableContains(Table *table, Value key) {
+    if (table->cnt == 0) return false;
+
+    Entry *entry = findEntry(table->entries, table->cap, key);
+    if (IS_EMPTY(entry->key)) return false;
+    return true;
+}
+
 static void adjustCap(VM *vm, Table *table, int cap) {
     Entry *entries = ALLOCATE(Entry, cap);
     for (int i = 0; i < cap; i++) {

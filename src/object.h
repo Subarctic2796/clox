@@ -20,6 +20,7 @@
 #define IS_ERROR(value)        isObjType(value, OBJ_ERROR)
 #define IS_ARRAY(value)        isObjType(value, OBJ_ARRAY)
 #define IS_MAP(value)          isObjType(value, OBJ_MAP)
+#define IS_RANGE(value)        isObjType(value, OBJ_RANGE)
 
 #define AS_BOUND_METHOD(value) ((ObjBoundMethod *)AS_OBJ(value))
 #define AS_CLASS(value)        ((ObjClass *)AS_OBJ(value))
@@ -29,6 +30,7 @@
 #define AS_NATIVE(value)       (((ObjNative *)AS_OBJ(value))->function)
 #define AS_ARRAY(value)        ((ObjArray *)AS_OBJ(value))
 #define AS_MAP(value)          ((ObjMap *)AS_OBJ(value))
+#define AS_RANGE(value)        ((ObjRange *)AS_OBJ(value))
 #define AS_STRING(value)       ((ObjString *)AS_OBJ(value))
 #define AS_CSTRING(value)      (((ObjString *)AS_OBJ(value))->chars)
 #define AS_ERROR(value)        ((ObjError *)AS_OBJ(value))
@@ -46,6 +48,7 @@ typedef enum {
     OBJ_UPVALUE,
     OBJ_ARRAY,
     OBJ_MAP,
+    OBJ_RANGE,
 } ObjType;
 
 static inline const char *ObjTypeString(ObjType t) {
@@ -61,6 +64,7 @@ static inline const char *ObjTypeString(ObjType t) {
         [OBJ_UPVALUE] = "OBJ_UPVALUE",
         [OBJ_ARRAY] = "OBJ_ARRAY",
         [OBJ_MAP] = "OBJ_MAP",
+        [OBJ_RANGE] = "OBJ_RANGE",
     };
     return strings[t];
 }
@@ -141,6 +145,14 @@ typedef struct {
     Table items;
 } ObjMap;
 
+typedef struct {
+    Obj obj;
+    double start;
+    double stop;
+    double step;
+} ObjRange;
+
+ObjRange *newRange(VM *vm, double start, double stop, double step);
 ObjArray *newArray(VM *vm);
 ObjMap *newMap(VM *vm);
 ObjBoundMethod *newBoundMethod(VM *vm, Value reciever, ObjClosure *method);
@@ -187,29 +199,32 @@ static inline void deleteFromArray(ObjArray *arr, int index) {
     arr->items.values[arr->items.cnt--] = NIL_VAL;
 }
 
-// returns -1 if value is not a number
-// returns -2 if value is not an integer
-// returns -3 if index is out of bounds
-// returns a +ve num on success
-static inline int isValidIndex(Value value, int len) {
-    if (!IS_NUMBER(value)) return -1;
-    double index = AS_NUMBER(value);
-    if (trunc(index) != index) return -2;
-    if ((int)index >= 0 && (int)index < len) return (int)index;
-    return -3;
-}
-
 static inline bool isObjType(Value value, ObjType type) {
     return IS_OBJ(value) && AS_OBJ(value)->type == type;
 }
 
 static inline bool isIndexable(Value value) {
-    return IS_STRING(value) || IS_ARRAY(value) || IS_MAP(value);
+    return IS_STRING(value) || IS_ARRAY(value) || IS_MAP(value) ||
+           IS_RANGE(value);
 }
 
 static inline bool isHashable(Value value) {
     return IS_NUMBER(value) || IS_BOOL(value) || IS_NIL(value) ||
            IS_STRING(value) || IS_ERROR(value) || IS_INSTANCE(value);
+}
+
+// returns -1 if value is not a number
+// returns -2 if value is not an integer
+// returns -3 if index is out of bounds
+// returns -4 if value is a range
+// returns a +ve num on success
+static inline int isValidIndex(Value value, int len) {
+    if (IS_RANGE(value)) return -4;
+    if (!IS_NUMBER(value)) return -1;
+    double index = AS_NUMBER(value);
+    if (trunc(index) != index) return -2;
+    if ((int)index >= 0 && (int)index < len) return (int)index;
+    return -3;
 }
 
 #endif // INCLUDE_CLOX_OBJECT_H_
