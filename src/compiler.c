@@ -23,6 +23,12 @@ typedef struct {
     Lexer lexer;
 } Parser;
 
+static inline void initParser(Parser *p, const char *src) {
+    initLexer(&p->lexer, src);
+    p->hadError = false;
+    p->panicMode = false;
+}
+
 typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT, // =
@@ -400,8 +406,8 @@ typedef enum {
     IDENT_CLASS_GLOBAL,
 } IdentType;
 
-static inline uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
-                                      uint8_t *classGlobal) {
+static uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
+                               uint8_t *classGlobal) {
     ObjString *ident = copyString(&vm, name->start, name->len);
     switch (type) {
     case IDENT_IDENT:       return makeConstant(c, OBJ_VAL(ident));
@@ -463,7 +469,7 @@ static int resolveLocal(Compiler *compiler, Token *name) {
     return -1;
 }
 
-static inline int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
+static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
     int upvalueCnt = compiler->fn->upvalueCnt;
 
     // check if upvalue already exists
@@ -558,14 +564,14 @@ static void defineVariable(Compiler *c, uint8_t globalIdx) {
 
 static uint8_t argumentList(Compiler *c) {
     (void)c;
+    if (match(TOKEN_RPAREN)) return 0;
+
     uint8_t argCnt = 0;
-    if (!check(TOKEN_RPAREN)) {
-        do {
-            expression(c);
-            if (argCnt == 255) error("Can't have more than 255 arguments");
-            argCnt++;
-        } while (match(TOKEN_COMMA));
-    }
+    do {
+        expression(c);
+        if (argCnt == 255) error("Can't have more than 255 arguments");
+        argCnt++;
+    } while (match(TOKEN_COMMA));
     consume(TOKEN_RPAREN, "Expect ')' after arguments");
     return argCnt;
 }
@@ -678,20 +684,23 @@ static void string(bool canAssign) {
 static void array(bool canAssign) {
     (void)canAssign;
 
-    int cnt = 0;
-    if (!check(TOKEN_RSQR)) {
-        do {
-            // trailing comma
-            if (check(TOKEN_RSQR)) break;
-
-            parsePrecedence(current, PREC_OR);
-
-            if (cnt > UINT8_MAX) {
-                error("Can't have more than 255 items in an array literal");
-            }
-            cnt++;
-        } while (match(TOKEN_COMMA));
+    if (match(TOKEN_RSQR)) {
+        emitOpArg(current, OP_BUILD_ARRAY, 0);
+        return;
     }
+
+    int cnt = 0;
+    do {
+        // trailing comma
+        if (check(TOKEN_RSQR)) break;
+
+        parsePrecedence(current, PREC_OR);
+
+        if (cnt > UINT8_MAX) {
+            error("Can't have more than 255 items in an array literal");
+        }
+        cnt++;
+    } while (match(TOKEN_COMMA));
 
     consume(TOKEN_RSQR, "Expect ']' after array literal");
 
@@ -702,21 +711,24 @@ static void map(bool canAssign) {
     (void)canAssign;
 
     int cnt = 0;
-    if (!check(TOKEN_RBRACE)) {
-        do {
-            // trailing comma
-            if (check(TOKEN_RBRACE)) break;
-
-            parsePrecedence(current, PREC_OR); // key
-            consume(TOKEN_COLON, "Expect ':' after map key");
-            parsePrecedence(current, PREC_OR); // value
-
-            if (cnt > UINT8_MAX) {
-                error("Can't have more than 255 items in a map literal");
-            }
-            cnt++;
-        } while (match(TOKEN_COMMA));
+    if (match(TOKEN_RBRACE)) {
+        emitOpArg(current, OP_BUILD_MAP, cnt);
+        return;
     }
+
+    do {
+        // trailing comma
+        if (check(TOKEN_RBRACE)) break;
+
+        parsePrecedence(current, PREC_OR); // key
+        consume(TOKEN_COLON, "Expect ':' after map key");
+        parsePrecedence(current, PREC_OR); // value
+
+        if (cnt > UINT8_MAX) {
+            error("Can't have more than 255 items in a map literal");
+        }
+        cnt++;
+    } while (match(TOKEN_COMMA));
 
     consume(TOKEN_RBRACE, "Expect '}' after map literal");
 
@@ -967,7 +979,7 @@ static void method(Compiler *c) {
     emitOpArg(c, OP_METHOD, constant);
 }
 
-static void classDecl(Compiler *c) {
+static inline void classDecl(Compiler *c) {
     consume(TOKEN_IDENTIFIER, "Expect class name");
     Token className = parser.prv;
     IdentType type = IDENT_CLASS_LOCAL;
@@ -1016,7 +1028,7 @@ static void classDecl(Compiler *c) {
     currentClass = currentClass->enclosing;
 }
 
-static void funDecl(Compiler *c) {
+static inline void funDecl(Compiler *c) {
     uint8_t globalIdx = parseVariable(c, "Expect function name");
     markInitialized(c);
     function(TYPE_FUNCTION);
@@ -1044,7 +1056,7 @@ static void expressionStmt(Compiler *c) {
 
 // this compiles a `for (var ix, i in iterable) { ... }`
 // and reports if it successfully managed to compile it
-static bool forIterStmt(Compiler *c) {
+static inline bool forIterStmt(Compiler *c) {
     // a for loop of the form:
     // for (var ix, i in iterable) {
     //     print ix;
@@ -1197,7 +1209,7 @@ static bool forIterStmt(Compiler *c) {
     return true;
 }
 
-static void forStmt(Compiler *c) {
+static inline void forStmt(Compiler *c) {
     beginScope(c);
     consume(TOKEN_LPAREN, "Expect '(' after 'for'");
 
@@ -1256,7 +1268,7 @@ static void forStmt(Compiler *c) {
     endScope(c);
 }
 
-static void ifStmt(Compiler *c) {
+static inline void ifStmt(Compiler *c) {
     consume(TOKEN_LPAREN, "Expect '(' after if");
     expression(c);
     consume(TOKEN_RPAREN, "Expect ')' after condition");
@@ -1273,13 +1285,13 @@ static void ifStmt(Compiler *c) {
     patchJump(c, elseJumpIdx);
 }
 
-static void printStmt(Compiler *c) {
+static inline void printStmt(Compiler *c) {
     expression(c);
     consume(TOKEN_SEMICOLON, "Expect ';' after value");
     emitOp(c, OP_PRINT);
 }
 
-static void returnStmt(Compiler *c) {
+static inline void returnStmt(Compiler *c) {
     if (c->type == TYPE_SCRIPT) error("Can't return from top-level code");
 
     if (match(TOKEN_SEMICOLON)) {
@@ -1295,7 +1307,7 @@ static void returnStmt(Compiler *c) {
     }
 }
 
-static void whileStmt(Compiler *c) {
+static inline void whileStmt(Compiler *c) {
     Loop loop = {0};
     initLoop(c, &loop);
 
@@ -1406,12 +1418,9 @@ static void statement(Compiler *c) {
 }
 
 ObjFn *compile(const char *source) {
-    initLexer(&parser.lexer, source);
+    initParser(&parser, source);
     Compiler compiler = {0};
     initCompiler(&compiler, TYPE_SCRIPT);
-
-    parser.hadError = false;
-    parser.panicMode = false;
 
     advance();
 
