@@ -4,7 +4,7 @@
 #include "thirdparty_linenoise.h"
 #include "vm.h"
 
-static void repl(void) {
+static void repl(VM *vm) {
 #ifdef NAN_BOXING
     printf("NAN tagging is enabled\n");
 #endif
@@ -20,7 +20,7 @@ static void repl(void) {
     char *line = NULL;
     while ((line = linenoise("> ")) != NULL) {
         linenoiseHistoryAdd(line);
-        interpret(&vm, line);
+        interpret(vm, line);
         free(line);
     }
     linenoiseHistorySave(HIST_FILE);
@@ -53,9 +53,9 @@ static char *readFile(const char *path) {
     return buffer;
 }
 
-static void runFile(const char *path) {
+static void runFile(VM *vm, const char *path) {
     char *src = readFile(path);
-    InterpretResult result = interpret(&vm, src);
+    InterpretResult result = interpret(vm, src);
     free(src);
 
     switch (result) {
@@ -69,11 +69,12 @@ static void runFile(const char *path) {
 }
 
 int main(int argc, char *argv[]) {
+    VM vm = {0};
     initVM(&vm);
 
     switch (argc) {
-    case 1:  repl(); break;
-    case 2:  runFile(argv[1]); break;
+    case 1:  repl(&vm); break;
+    case 2:  runFile(&vm, argv[1]); break;
     default: fprintf(stderr, "Usage: clox [path]\n"); exit(64);
     }
 

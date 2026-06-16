@@ -47,8 +47,6 @@ typedef enum {
     INTERPRET_RUNTIME_ERR,
 } InterpretResult;
 
-extern VM vm;
-
 void initVM(VM *vm);
 void freeVM(VM *vm);
 InterpretResult interpret(VM *vm, const char *source);

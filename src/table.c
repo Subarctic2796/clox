@@ -49,8 +49,7 @@ bool tableContains(Table *table, Value key) {
     if (table->cnt == 0) return false;
 
     Entry *entry = findEntry(table->entries, table->cap, key);
-    if (IS_EMPTY(entry->key)) return false;
-    return true;
+    return !IS_EMPTY(entry->key);
 }
 
 static void adjustCap(VM *vm, Table *table, int cap) {

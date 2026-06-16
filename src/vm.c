@@ -15,8 +15,6 @@
 #include "debug.h"
 #endif
 
-VM vm = {0};
-
 static inline void resetStack(VM *vm) {
     vm->sp = vm->stack;
     vm->frameCount = 0;
@@ -740,7 +738,7 @@ static InterpretResult run(VM *vm) {
 }
 
 InterpretResult interpret(VM *vm, const char *source) {
-    ObjFn *function = compile(source);
+    ObjFn *function = compile(vm, source);
     if (function == NULL) return INTERPRET_COMPILE_ERR;
 
     pushRoot(vm, OBJ_VAL(function));
