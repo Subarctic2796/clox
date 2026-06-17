@@ -44,7 +44,9 @@ typedef enum {
     PREC_PRIMARY
 } Precedence;
 
-typedef void (*ParseFn)(bool canAssign);
+typedef struct Compiler Compiler;
+
+typedef void (*ParseFn)(Compiler *c, bool canAssign);
 
 typedef struct {
     ParseFn prefix;
@@ -85,9 +87,11 @@ typedef struct ClassCompiler {
 
 typedef struct Compiler {
     // current compiler info
+    Parser *parser;
     struct Compiler *enclosing;
     ObjFn *fn;
     FunctionType type;
+    ClassCompiler *currentClass;
 
     // constants info
     Table constantsTable;
@@ -107,9 +111,7 @@ typedef struct Compiler {
 } Compiler;
 
 static VM *vm = NULL;
-static Parser parser = {0};
 static Compiler *current = NULL;
-static ClassCompiler *currentClass = NULL;
 
 static inline Chunk *curChunk(const Compiler *compiler) {
     return &compiler->fn->chunk;
@@ -154,29 +156,25 @@ static void advance(Parser *parser) {
 }
 
 static inline void consume(Compiler *c, TokenType type, const char *message) {
-    (void)c;
-    Parser *p = &parser;
-    if (p->cur.type == type) {
-        advance(p);
+    if (c->parser->cur.type == type) {
+        advance(c->parser);
         return;
     }
-    errorAtCurrent(p, message);
+    errorAtCurrent(c->parser, message);
 }
 
 static inline bool check(Compiler *c, TokenType type) {
-    (void)c;
-    return parser.cur.type == type;
+    return c->parser->cur.type == type;
 }
 
 static inline bool match(Compiler *c, TokenType type) {
-    Parser *p = &parser;
     if (!check(c, type)) return false;
-    advance(p);
+    advance(c->parser);
     return true;
 }
 
 static inline void emitByte(Compiler *c, uint8_t byte) {
-    writeChunk(vm, curChunk(c), byte, parser.prv.line);
+    writeChunk(vm, curChunk(c), byte, c->parser->prv.line);
 }
 
 static inline void emitBytes(Compiler *c, uint8_t byte1, uint8_t byte2) {
@@ -204,7 +202,7 @@ static void emitLoop(Compiler *c, int loopStart) {
     emitOp(c, OP_LOOP);
 
     int offset = curChunk(c)->cnt - loopStart + 2;
-    if (offset > UINT16_MAX) error(&parser, "Loop body too large");
+    if (offset > UINT16_MAX) error(c->parser, "Loop body too large");
 
     emitShort(c, offset);
 }
@@ -240,7 +238,7 @@ static uint8_t makeConstant(Compiler *c, Value value) {
     if (IS_OBJ(value)) popRoot(vm);
 
     if (constIdx > UINT8_MAX) {
-        error(&parser, "Too many constants in on chunk");
+        error(c->parser, "Too many constants in on chunk");
         return 0;
     }
 
@@ -256,24 +254,27 @@ static void patchJump(Compiler *c, int offset) {
     // -2 to adjust for the bytecode for the jump offset itself
     int jump = curChunk(c)->cnt - offset - 2;
 
-    if (jump > UINT16_MAX) error(&parser, "Too much code to jump over");
+    if (jump > UINT16_MAX) error(c->parser, "Too much code to jump over");
 
     curChunk(c)->code[offset] = (jump >> 8) & 0xff;
     curChunk(c)->code[offset + 1] = jump & 0xff;
 }
 
-static void initCompiler(Compiler *compiler, FunctionType type) {
+static void initCompiler(Compiler *compiler, Compiler *enclosing,
+                         Parser *parser, FunctionType type) {
     *compiler = (Compiler){0};
-    compiler->enclosing = current;
+    compiler->parser = parser;
+    compiler->enclosing = enclosing;
+    compiler->currentClass = enclosing == NULL ? NULL : enclosing->currentClass;
     compiler->type = type;
     compiler->fn = newFunction(vm);
     current = compiler;
 
     if (type != TYPE_SCRIPT) {
-        current->fn->name = copyString(vm, parser.prv.start, parser.prv.len);
+        compiler->fn->name = copyString(vm, parser->prv.start, parser->prv.len);
     }
 
-    Local *local = &current->locals[current->localCount++];
+    Local *local = &compiler->locals[compiler->localCount++];
     *local = (Local){{0}, 0, OP_POP};
     if (type != TYPE_FUNCTION) {
         local->name.start = "this";
@@ -292,7 +293,7 @@ static ObjFn *endCompiler(Compiler *compiler) {
     ObjFn *fn = compiler_->fn;
 
 #ifdef DEBUG_PRINT_CODE
-    if (!parser.hadError) {
+    if (!compiler_->parser->hadError) {
         disassembleChunk(curChunk(compiler_),
                          fn->name != NULL ? fn->name->chars : "<script>");
     }
@@ -463,7 +464,7 @@ static int resolveLocal(Compiler *compiler, Token *name) {
         Local *local = &compiler->locals[i];
         if (identifiersEqual(name, &local->name)) {
             if (local->depth == -1) {
-                error(&parser,
+                error(compiler->parser,
                       "Can't read local variable in its own initializer");
             }
             return i;
@@ -485,7 +486,7 @@ static int addUpvalue(Compiler *compiler, uint8_t index, bool isLocal) {
     }
 
     if (upvalueCnt == UINT8_COUNT) {
-        error(&parser, "Too many closure variables in function");
+        error(compiler->parser, "Too many closure variables in function");
         return 0;
     }
 
@@ -512,7 +513,7 @@ static int resolveUpvalue(Compiler *compiler, Token *name) {
 
 static int addLocal(Compiler *c, const Token name) {
     if (c->localCount == UINT8_COUNT) {
-        error(&parser, "Too many local variables in function");
+        error(c->parser, "Too many local variables in function");
         return -1;
     }
 
@@ -524,7 +525,7 @@ static void declareVariable(Compiler *c) {
     // globals need names
     if (c->scopeDepth == 0) return;
 
-    Token *name = &parser.prv;
+    Token *name = &c->parser->prv;
     for (int i = c->localCount - 1; i >= 0; i--) {
         Local *local = &c->locals[i];
         if (local->depth != -1 && local->depth < c->scopeDepth) {
@@ -532,7 +533,7 @@ static void declareVariable(Compiler *c) {
         }
 
         if (identifiersEqual(name, &local->name)) {
-            error(&parser, "Already a variable with this name in the scope");
+            error(c->parser, "Already a variable with this name in the scope");
         }
     }
 
@@ -546,7 +547,7 @@ static uint8_t parseVariable(Compiler *c, const char *msg) {
     // return dummy index instead, as locals aren't looked up by name
     if (c->scopeDepth > 0) return 0;
 
-    return identifierConst(c, &parser.prv, IDENT_VAR, NULL);
+    return identifierConst(c, &c->parser->prv, IDENT_VAR, NULL);
 }
 
 static void markInitialized(Compiler *c) {
@@ -571,16 +572,16 @@ static uint8_t argumentList(Compiler *c) {
     uint8_t argCnt = 0;
     do {
         expression(c);
-        if (argCnt == 255) error(&parser, "Can't have more than 255 arguments");
+        if (argCnt == 255)
+            error(c->parser, "Can't have more than 255 arguments");
         argCnt++;
     } while (match(c, TOKEN_COMMA));
     consume(c, TOKEN_RPAREN, "Expect ')' after arguments");
     return argCnt;
 }
 
-static void and_(bool canAssign) {
+static void and_(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
     int endJmpIdx = emitJump(c, OP_JUMP_IF_FALSE);
 
     emitPop(c);
@@ -589,10 +590,9 @@ static void and_(bool canAssign) {
     patchJump(c, endJmpIdx);
 }
 
-static void binary(bool canAssign) {
+static void binary(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
-    TokenType operatorType = parser.prv.type;
+    TokenType operatorType = c->parser->prv.type;
     ParseRule *rule = getRule(operatorType);
     parsePrecedence(c, (Precedence)(rule->precedence + 1));
 
@@ -615,17 +615,15 @@ static void binary(bool canAssign) {
 #pragma GCC diagnostic pop
 }
 
-static void call(bool canAssign) {
+static void call(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
     uint8_t argCnt = argumentList(c);
     emitOpArg(c, OP_CALL, argCnt);
 }
 
-static void dot(bool canAssign) {
-    Compiler *c = current;
+static void dot(Compiler *c, bool canAssign) {
     consume(c, TOKEN_IDENTIFIER, "Expect property name after '.'");
-    uint8_t name = identifierConst(c, &parser.prv, IDENT_IDENT, NULL);
+    uint8_t name = identifierConst(c, &c->parser->prv, IDENT_IDENT, NULL);
 
     if (canAssign && match(c, TOKEN_EQ)) {
         expression(c);
@@ -638,12 +636,11 @@ static void dot(bool canAssign) {
     }
 }
 
-static void literal(bool canAssign) {
+static void literal(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
-    switch (parser.prv.type) {
+    switch (c->parser->prv.type) {
     case TOKEN_FALSE: emitOp(c, OP_FALSE); break;
     case TOKEN_TRUE:  emitOp(c, OP_TRUE); break;
     case TOKEN_NIL:   emitOp(c, OP_NIL); break;
@@ -652,17 +649,15 @@ static void literal(bool canAssign) {
 #pragma GCC diagnostic pop
 }
 
-static void grouping(bool canAssign) {
+static void grouping(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
     expression(c);
     consume(c, TOKEN_RPAREN, "Expect ')' after expression");
 }
 
-static void number(bool canAssign) {
+static void number(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
-    double value = strtod(parser.prv.start, NULL);
+    double value = strtod(c->parser->prv.start, NULL);
     if (trunc(value) == value) {
         if (value <= UINT8_MAX) {
             emitOpArg(c, OP_SMALL_INT, (uint8_t)(uint64_t)value);
@@ -672,9 +667,8 @@ static void number(bool canAssign) {
     emitConstant(c, NUMBER_VAL(value));
 }
 
-static void or_(bool canAssign) {
+static void or_(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
     int elseJumpIdx = emitJump(c, OP_JUMP_IF_FALSE);
     int endJumpIdx = emitJump(c, OP_JUMP);
 
@@ -685,16 +679,14 @@ static void or_(bool canAssign) {
     patchJump(c, endJumpIdx);
 }
 
-static void string(bool canAssign) {
+static void string(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
-    Token prv = parser.prv;
+    Token prv = c->parser->prv;
     emitConstant(c, OBJ_VAL(copyString(vm, prv.start + 1, prv.len - 2)));
 }
 
-static void array(bool canAssign) {
+static void array(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
 
     if (match(c, TOKEN_RSQR)) {
         emitOpArg(c, OP_BUILD_ARRAY, 0);
@@ -709,7 +701,7 @@ static void array(bool canAssign) {
         parsePrecedence(c, PREC_OR);
 
         if (cnt > UINT8_MAX) {
-            error(&parser,
+            error(c->parser,
                   "Can't have more than 255 items in an array literal");
         }
         cnt++;
@@ -720,9 +712,8 @@ static void array(bool canAssign) {
     emitOpArg(c, OP_BUILD_ARRAY, cnt);
 }
 
-static void map(bool canAssign) {
+static void map(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
 
     int cnt = 0;
     if (match(c, TOKEN_RBRACE)) {
@@ -739,7 +730,7 @@ static void map(bool canAssign) {
         parsePrecedence(c, PREC_OR); // value
 
         if (cnt > UINT8_MAX) {
-            error(&parser, "Can't have more than 255 items in a map literal");
+            error(c->parser, "Can't have more than 255 items in a map literal");
         }
         cnt++;
     } while (match(c, TOKEN_COMMA));
@@ -749,8 +740,7 @@ static void map(bool canAssign) {
     emitOpArg(c, OP_BUILD_MAP, cnt);
 }
 
-static void subscript(bool canAssign) {
-    Compiler *c = current;
+static void subscript(Compiler *c, bool canAssign) {
     parsePrecedence(c, PREC_OR);
     consume(c, TOKEN_RSQR, "Expect ']' after index");
 
@@ -785,8 +775,8 @@ static void namedVariable(Compiler *c, Token name, bool canAssign) {
     }
 }
 
-static inline void variable(bool canAssign) {
-    namedVariable(current, parser.prv, canAssign);
+static inline void variable(Compiler *c, bool canAssign) {
+    namedVariable(c, c->parser->prv, canAssign);
 }
 
 static inline Token syntheticToken(const char *txt, const int len) {
@@ -802,18 +792,17 @@ static inline uint8_t syntheticIdentifierConst(Compiler *c, const char *txt,
     return identifierConst(c, &tok, isVar ? IDENT_VAR : IDENT_IDENT, NULL);
 }
 
-static void super_(bool canAssign) {
+static void super_(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
-    if (currentClass == NULL) {
-        error(&parser, "Can't use 'super' outside of a class");
-    } else if (!currentClass->hasSuperClass) {
-        error(&parser, "Can't use 'super' in a class with no superclass");
+    if (c->currentClass == NULL) {
+        error(c->parser, "Can't use 'super' outside of a class");
+    } else if (!c->currentClass->hasSuperClass) {
+        error(c->parser, "Can't use 'super' in a class with no superclass");
     }
 
     consume(c, TOKEN_DOT, "Expect '.' after 'super'");
     consume(c, TOKEN_IDENTIFIER, "Expect superclass method name");
-    uint8_t name = identifierConst(c, &parser.prv, IDENT_IDENT, NULL);
+    uint8_t name = identifierConst(c, &c->parser->prv, IDENT_IDENT, NULL);
 
     namedVariable(c, syntheticToken("this", 4), false);
     if (match(c, TOKEN_LPAREN)) {
@@ -826,20 +815,19 @@ static void super_(bool canAssign) {
     }
 }
 
-static void this_(bool canAssign) {
+static void this_(Compiler *c, bool canAssign) {
     (void)canAssign;
-    if (currentClass == NULL) {
-        error(&parser, "Can't use 'this' outside of a class");
+    if (c->currentClass == NULL) {
+        error(c->parser, "Can't use 'this' outside of a class");
         return;
     }
 
-    variable(false);
+    variable(c, false);
 }
 
-static void unary(bool canAssign) {
+static void unary(Compiler *c, bool canAssign) {
     (void)canAssign;
-    Compiler *c = current;
-    TokenType operatorType = parser.prv.type;
+    TokenType operatorType = c->parser->prv.type;
 
     // compile the operand
     parsePrecedence(c, PREC_UNARY);
@@ -855,11 +843,11 @@ static void unary(bool canAssign) {
 #pragma GCC diagnostic pop
 }
 
-static void function(FunctionType type);
+static void function(Compiler *c, FunctionType type);
 
-static void lambda(bool canAssign) {
+static void lambda(Compiler *c, bool canAssign) {
     (void)canAssign;
-    function(TYPE_FUNCTION);
+    function(c, TYPE_FUNCTION);
 }
 
 ParseRule rules[] = {
@@ -918,24 +906,23 @@ static_assert(ARRAY_LEN(rules) == __TOKEN_CNT,
 static inline ParseRule *getRule(TokenType type) { return &rules[type]; }
 
 static void parsePrecedence(Compiler *c, Precedence precedence) {
-    (void)c;
-    advance(&parser);
-    ParseFn prefixRule = getRule(parser.prv.type)->prefix;
+    advance(c->parser);
+    ParseFn prefixRule = getRule(c->parser->prv.type)->prefix;
     if (prefixRule == NULL) {
-        error(&parser, "Expect expression");
+        error(c->parser, "Expect expression");
         return;
     }
 
     bool canAssign = precedence <= PREC_ASSIGNMENT;
-    prefixRule(canAssign);
+    prefixRule(c, canAssign);
 
-    while (precedence <= getRule(parser.cur.type)->precedence) {
-        advance(&parser);
-        ParseFn infixRule = getRule(parser.prv.type)->infix;
-        infixRule(canAssign);
+    while (precedence <= getRule(c->parser->cur.type)->precedence) {
+        advance(c->parser);
+        ParseFn infixRule = getRule(c->parser->prv.type)->infix;
+        infixRule(c, canAssign);
 
         if (canAssign && match(c, TOKEN_EQ)) {
-            error(&parser, "Invalid assignment target");
+            error(c->parser, "Invalid assignment target");
         }
     }
 }
@@ -952,17 +939,19 @@ static void block(Compiler *c) {
     consume(c, TOKEN_RBRACE, "Expect '}' after block");
 }
 
-static void function(FunctionType type) {
+static void function(Compiler *c, FunctionType type) {
+    (void)c;
     Compiler compiler = {0};
-    initCompiler(&compiler, type);
+    initCompiler(&compiler, current, current->parser, type);
     beginScope(current);
 
     consume(&compiler, TOKEN_LPAREN, "Expect '(' after function name");
     if (!check(&compiler, TOKEN_RPAREN)) {
         do {
-            current->fn->arity++;
-            if (current->fn->arity > 255) {
-                errorAtCurrent(&parser, "Can't have more than 255 parameters");
+            compiler.fn->arity++;
+            if (compiler.fn->arity > 255) {
+                errorAtCurrent(c->parser,
+                               "Can't have more than 255 parameters");
             }
             uint8_t constIdx =
                 parseVariable(&compiler, "Expect parameter name");
@@ -989,23 +978,24 @@ static void function(FunctionType type) {
 
 static void method(Compiler *c) {
     consume(c, TOKEN_IDENTIFIER, "Expect method name");
-    uint8_t constant = identifierConst(c, &parser.prv, IDENT_IDENT, NULL);
+    uint8_t constant = identifierConst(c, &c->parser->prv, IDENT_IDENT, NULL);
 
     FunctionType type = TYPE_METHOD;
-    if (parser.prv.len == 4 && memcmp(parser.prv.start, "init", 4) == 0) {
+    if (c->parser->prv.len == 4 &&
+        memcmp(c->parser->prv.start, "init", 4) == 0) {
         type = TYPE_INITIALIZER;
     }
-    function(type);
+    function(c, type);
     emitOpArg(c, OP_METHOD, constant);
 }
 
 static inline void classDecl(Compiler *c) {
     consume(c, TOKEN_IDENTIFIER, "Expect class name");
-    Token className = parser.prv;
+    Token className = c->parser->prv;
     IdentType type = IDENT_CLASS_LOCAL;
     uint8_t classGlobal = 0;
     if (c->scopeDepth == 0) type = IDENT_CLASS_GLOBAL;
-    uint8_t nameConst = identifierConst(c, &parser.prv, type, &classGlobal);
+    uint8_t nameConst = identifierConst(c, &c->parser->prv, type, &classGlobal);
     declareVariable(c);
 
     emitOpArg(c, OP_CLASS, nameConst);
@@ -1015,15 +1005,15 @@ static inline void classDecl(Compiler *c) {
         defineVariable(c, nameConst);
     }
 
-    ClassCompiler classCompiler = {currentClass, false};
-    currentClass = &classCompiler;
+    ClassCompiler classCompiler = {c->currentClass, false};
+    c->currentClass = &classCompiler;
 
     if (match(c, TOKEN_LT)) {
         consume(c, TOKEN_IDENTIFIER, "Expect superclass name");
-        variable(false);
+        variable(c, false);
 
-        if (identifiersEqual(&className, &parser.prv)) {
-            error(&parser, "A class can't inherit from itself");
+        if (identifiersEqual(&className, &c->parser->prv)) {
+            error(c->parser, "A class can't inherit from itself");
         }
 
         beginScope(c);
@@ -1045,13 +1035,13 @@ static inline void classDecl(Compiler *c) {
 
     if (classCompiler.hasSuperClass) endScope(c);
 
-    currentClass = currentClass->enclosing;
+    c->currentClass = c->currentClass->enclosing;
 }
 
 static inline void funDecl(Compiler *c) {
     uint8_t globalIdx = parseVariable(c, "Expect function name");
     markInitialized(c);
-    function(TYPE_FUNCTION);
+    function(c, TYPE_FUNCTION);
     defineVariable(c, globalIdx);
 }
 
@@ -1111,13 +1101,13 @@ static inline bool forIterStmt(Compiler *c) {
     // remember the name incase it is a forIterStmt
     // we call it first name as if we are in a `for (var ix, i in iter) ...`
     // then this one will be the index and not the item
-    Token first = parser.prv;
+    Token first = c->parser->prv;
 
     // we still don't know if it is a forIterStmt but the odds are slightly
     // higher, but we still need to see either a `,` or an `in` token to confirm
     bool isIndexAndItem = false;
     if (match(c, TOKEN_COMMA) || match(c, TOKEN_IN)) {
-        isIndexAndItem = parser.prv.type == TOKEN_COMMA;
+        isIndexAndItem = c->parser->prv.type == TOKEN_COMMA;
     } else {
         return false;
     }
@@ -1144,7 +1134,7 @@ static inline bool forIterStmt(Compiler *c) {
         // save the 2nd variable as we need it
         // correct it as we now have the 2nd variable
         Token tmp = first;
-        first = parser.prv;
+        first = c->parser->prv;
         second = tmp;
         // the parser state is now:
         // for (var ix, i in iter) ...
@@ -1171,7 +1161,7 @@ static inline bool forIterStmt(Compiler *c) {
     // possibly the `ix` local variables
     int needed = isIndexAndItem ? 3 : 2;
     if (c->localCount + needed > UINT8_COUNT) {
-        error(&parser,
+        error(c->parser,
               "Too many local variables in scope. (Not enough space for "
               "for-loop internal variables)");
     }
@@ -1243,14 +1233,14 @@ static inline void forStmt(Compiler *c) {
     // for loop over an iterable
 
     // the parser has the lexer in it so saving the parser also saves the lexer
-    Parser savedParser = parser;
+    Parser savedParser = *c->parser;
     // if it was a for loop over an iterable it will call endScope
     // and we are done compiling the for loop so we just return
     if (forIterStmt(c)) return;
 
     // otherwise we have to restore the state of the lexer and parser
     // and try to compile a normal for loop
-    parser = savedParser;
+    *c->parser = savedParser;
 
     if (match(c, TOKEN_SEMICOLON)) {
         // no initializer
@@ -1314,14 +1304,14 @@ static inline void printStmt(Compiler *c) {
 
 static inline void returnStmt(Compiler *c) {
     if (c->type == TYPE_SCRIPT) {
-        error(&parser, "Can't return from top-level code");
+        error(c->parser, "Can't return from top-level code");
     }
 
     if (match(c, TOKEN_SEMICOLON)) {
         emitReturn(c);
     } else {
         if (c->type == TYPE_INITIALIZER) {
-            error(&parser, "Can't return a value from an initializer");
+            error(c->parser, "Can't return a value from an initializer");
         }
 
         expression(c);
@@ -1383,7 +1373,7 @@ static void declaration(Compiler *c) {
         statement(c);
     }
 
-    if (parser.panicMode) synchronize(&parser);
+    if (c->parser->panicMode) synchronize(c->parser);
 }
 
 // discards any locals created
@@ -1412,7 +1402,7 @@ static void statement(Compiler *c) {
         endScope(c);
     } else if (match(c, TOKEN_BREAK)) {
         if (c->loop == NULL) {
-            error(&parser, "Can't use 'break' outside of loops");
+            error(c->parser, "Can't use 'break' outside of loops");
             return;
         }
 
@@ -1424,7 +1414,7 @@ static void statement(Compiler *c) {
         emitJump(c, OP_NOP);
     } else if (match(c, TOKEN_CONTINUE)) {
         if (c->loop == NULL) {
-            error(&parser, "Can't use 'continue' outside of loops");
+            error(c->parser, "Can't use 'continue' outside of loops");
             return;
         }
 
@@ -1442,9 +1432,10 @@ static void statement(Compiler *c) {
 
 ObjFn *compile(VM *vm_, const char *source) {
     vm = vm_;
+    Parser parser = {0};
     initParser(&parser, source);
     Compiler compiler = {0};
-    initCompiler(&compiler, TYPE_SCRIPT);
+    initCompiler(&compiler, current, &parser, TYPE_SCRIPT);
 
     advance(&parser);
 
