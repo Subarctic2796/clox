@@ -121,6 +121,17 @@ static Value lenNative(VM *vm, int argc, Value *args) {
                      "Can only take the length of strings, arrays, and maps");
 }
 
+static Value capNative(VM *vm, int argc, Value *args) {
+    CHECK_ARITY_NATIVE(1);
+
+    if (IS_ARRAY(args[0])) {
+        return NUMBER_VAL(AS_ARRAY(args[0])->items.cap);
+    } else if (IS_MAP(args[0])) {
+        return NUMBER_VAL(AS_MAP(args[0])->items.cap);
+    }
+    return ERROR_VAL(false, "Can only take the capacity of arrays and maps");
+}
+
 static Value errorNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
     return ERROR_VAL(AS_BOOL(args[0]), "this is a recoverable error");
@@ -170,6 +181,10 @@ static Value rangeNative(VM *vm, int argc, Value *args) {
 
     return OBJ_VAL(newRange(vm, start, stop, step));
 }
+
+// --------------
+// NATIVE CLASSES
+// --------------
 
 static Value iterInitNative(VM *vm, int argc, Value *args) {
     CHECK_ARITY_NATIVE(1);
@@ -367,10 +382,11 @@ static void defineNative(VM *vm, const NativeDecl decl) {
 
 void defineAllNatives(VM *vm) {
     static const NativeDecl NATIVE_FNS[] = {
-        NATIVE_FN("len", lenNative),       NATIVE_FN("clock", clockNative),
-        NATIVE_FN("error", errorNative),   NATIVE_FN("clear", clearNative),
-        NATIVE_FN("delete", deleteNative), NATIVE_FN("append", appendNative),
-        NATIVE_FN("typeof", typeofNative), NATIVE_FN("range", rangeNative),
+        NATIVE_FN("len", lenNative),       NATIVE_FN("cap", capNative),
+        NATIVE_FN("clock", clockNative),   NATIVE_FN("error", errorNative),
+        NATIVE_FN("clear", clearNative),   NATIVE_FN("delete", deleteNative),
+        NATIVE_FN("append", appendNative), NATIVE_FN("typeof", typeofNative),
+        NATIVE_FN("range", rangeNative),
     };
 
     for (size_t i = 0; i < ARRAY_LEN(NATIVE_FNS); i++) {

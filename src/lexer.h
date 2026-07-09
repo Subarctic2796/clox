@@ -29,7 +29,6 @@ typedef enum {
     TOKEN_GTEQ,
     TOKEN_LT,
     TOKEN_LTEQ,
-    TOKEN_ERCENT_EQ,
     // Literals.
     TOKEN_IDENTIFIER,
     TOKEN_STRING,

@@ -412,7 +412,7 @@ static void endLoop(Compiler *c, int loopStart) {
 static inline void expression(Compiler *c);
 static void statement(Compiler *c);
 static void declaration(Compiler *c);
-static inline ParseRule *getRule(TokenType type);
+static inline const ParseRule *getRule(TokenType type);
 static void parsePrecedence(Compiler *c, Precedence precedence);
 
 typedef enum {
@@ -528,9 +528,7 @@ static void declareVariable(Compiler *c) {
     Token *name = &c->parser->prv;
     for (int i = c->localCount - 1; i >= 0; i--) {
         Local *local = &c->locals[i];
-        if (local->depth != -1 && local->depth < c->scopeDepth) {
-            break;
-        }
+        if (local->depth != -1 && local->depth < c->scopeDepth) break;
 
         if (identifiersEqual(name, &local->name)) {
             error(c->parser, "Already a variable with this name in the scope");
@@ -538,16 +536,6 @@ static void declareVariable(Compiler *c) {
     }
 
     addLocal(c, *name);
-}
-
-static uint8_t parseVariable(Compiler *c, const char *msg) {
-    consume(c, TOKEN_IDENTIFIER, msg);
-
-    declareVariable(c);
-    // return dummy index instead, as locals aren't looked up by name
-    if (c->scopeDepth > 0) return 0;
-
-    return identifierConst(c, &c->parser->prv, IDENT_VAR, NULL);
 }
 
 static void markInitialized(Compiler *c) {
@@ -564,6 +552,16 @@ static void defineVariable(Compiler *c, uint8_t globalIdx) {
         return;
     }
     emitOpArg(c, OP_DEFINE_GLOBAL, globalIdx);
+}
+
+static uint8_t parseVariable(Compiler *c, const char *msg) {
+    consume(c, TOKEN_IDENTIFIER, msg);
+
+    declareVariable(c);
+    // return dummy index instead, as locals aren't looked up by name
+    if (c->scopeDepth > 0) return 0;
+
+    return identifierConst(c, &c->parser->prv, IDENT_VAR, NULL);
 }
 
 static uint8_t argumentList(Compiler *c) {
@@ -593,8 +591,8 @@ static void and_(Compiler *c, bool canAssign) {
 static void binary(Compiler *c, bool canAssign) {
     (void)canAssign;
     TokenType operatorType = c->parser->prv.type;
-    ParseRule *rule = getRule(operatorType);
-    parsePrecedence(c, (Precedence)(rule->precedence + 1));
+    Precedence prec = getRule(operatorType)->precedence;
+    parsePrecedence(c, prec + 1);
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch-enum"
@@ -850,7 +848,7 @@ static void lambda(Compiler *c, bool canAssign) {
     function(c, TYPE_FUNCTION);
 }
 
-ParseRule rules[] = {
+static const ParseRule RULES[] = {
     [TOKEN_LPAREN] = {grouping, call, PREC_CALL},
     [TOKEN_RPAREN] = {NULL, NULL, PREC_NONE},
     [TOKEN_LBRACE] = {map, NULL, PREC_NONE},
@@ -900,10 +898,10 @@ ParseRule rules[] = {
     [TOKEN_EOF] = {NULL, NULL, PREC_NONE},
 };
 
-static_assert(ARRAY_LEN(rules) == __TOKEN_CNT,
+static_assert(ARRAY_LEN(RULES) == __TOKEN_CNT,
               "number of tokens is not equal to the number of rules");
 
-static inline ParseRule *getRule(TokenType type) { return &rules[type]; }
+static inline const ParseRule *getRule(TokenType t) { return &RULES[t]; }
 
 static void parsePrecedence(Compiler *c, Precedence precedence) {
     advance(c->parser);
@@ -995,7 +993,7 @@ static inline void classDecl(Compiler *c) {
     IdentType type = IDENT_CLASS_LOCAL;
     uint8_t classGlobal = 0;
     if (c->scopeDepth == 0) type = IDENT_CLASS_GLOBAL;
-    uint8_t nameConst = identifierConst(c, &c->parser->prv, type, &classGlobal);
+    uint8_t nameConst = identifierConst(c, &className, type, &classGlobal);
     declareVariable(c);
 
     emitOpArg(c, OP_CLASS, nameConst);

@@ -15,6 +15,10 @@
 #include "debug.h"
 #endif
 
+static inline void push(VM *vm, Value value) { *vm->sp++ = value; }
+static inline Value pop(VM *vm) { return *(--vm->sp); }
+static inline Value peek(VM *vm, int dist) { return vm->sp[-1 - dist]; }
+
 static inline void resetStack(VM *vm) {
     vm->sp = vm->stack;
     vm->frameCount = 0;
@@ -442,6 +446,17 @@ static InterpretResult run(VM *vm) {
         PUSH(valueType(a op b));                                               \
     } while (false)
 
+#define BINARY_OP_FN(valueType, fn)                                            \
+    do {                                                                       \
+        if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) {                      \
+            runtimeError(vm, "Operands must be numbers");                      \
+            return INTERPRET_RUNTIME_ERR;                                      \
+        }                                                                      \
+        double b = AS_NUMBER(POP());                                           \
+        double a = AS_NUMBER(POP());                                           \
+        PUSH(valueType(fn(a, b)));                                             \
+    } while (false)
+
 #ifdef DEBUG_TRACE_EXECUTION
 #define TRACE_EXECUTION()                                                      \
     do {                                                                       \
@@ -570,6 +585,7 @@ static InterpretResult run(VM *vm) {
         case OP_SUBTRACT:      BINARY_OP(NUMBER_VAL, -); break;
         case OP_MULTIPLY:      BINARY_OP(NUMBER_VAL, *); break;
         case OP_DIVIDE:        BINARY_OP(NUMBER_VAL, /); break;
+        case OP_MOD:           BINARY_OP_FN(NUMBER_VAL, fmod); break;
         case OP_ADD:           {
             if (IS_STRING(PEEK(0)) && IS_STRING(PEEK(1))) {
                 concatenate(vm);
@@ -581,15 +597,6 @@ static InterpretResult run(VM *vm) {
                 runtimeError(vm, "Operands must be two numbers or two strings");
                 return INTERPRET_RUNTIME_ERR;
             }
-        } break;
-        case OP_MOD: {
-            if (!IS_NUMBER(PEEK(0)) || !IS_NUMBER(PEEK(1))) {
-                runtimeError(vm, "Operands must be numbers");
-                return INTERPRET_RUNTIME_ERR;
-            }
-            double b = AS_NUMBER(POP());
-            double a = AS_NUMBER(POP());
-            PUSH(NUMBER_VAL(fmod(a, b)));
         } break;
         case OP_NOT:    vm->sp[-1] = BOOL_VAL(isFalsey(vm->sp[-1])); break;
         case OP_NEGATE: {
@@ -732,6 +739,7 @@ static InterpretResult run(VM *vm) {
 #undef READ_CONST
 #undef READ_STRING
 #undef BINARY_OP
+#undef BINARY_OP_FN
 #undef TRACE_EXECUTION
 
     return INTERPRET_OK;

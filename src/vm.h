@@ -54,8 +54,5 @@ static inline void pushRoot(VM *vm, Value value) {
     vm->tempRoots[vm->tempCnt++] = value;
 }
 static inline void popRoot(VM *vm) { vm->tempCnt--; }
-static inline void push(VM *vm, Value value) { *vm->sp++ = value; }
-static inline Value pop(VM *vm) { return *(--vm->sp); }
-static inline Value peek(VM *vm, int dist) { return vm->sp[-1 - dist]; }
 
 #endif // INCLUDE_CLOX_VM_H_
