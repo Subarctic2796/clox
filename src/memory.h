@@ -23,7 +23,6 @@ typedef struct VM VM;
 void *reallocate(VM *vm, void *ptr, size_t oldSize, size_t newSize);
 void markObject(VM *vm, Obj *object);
 void markValue(VM *vm, Value value);
-void collectGarbage(VM *vm);
 void freeObjects(VM *vm);
 
 #endif // INCLUDE_CLOX_MEMORY_H_

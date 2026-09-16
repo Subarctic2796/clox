@@ -12,6 +12,8 @@
 
 #define GC_HEAP_GROW_FACTOR 2
 
+static void collectGarbage(VM *vm);
+
 void *reallocate(VM *vm, void *ptr, size_t oldSize, size_t newSize) {
     vm->bytesAllocated += newSize - oldSize;
     if (newSize > oldSize) {
@@ -246,7 +248,7 @@ static void sweep(VM *vm) {
     }
 }
 
-void collectGarbage(VM *vm) {
+static void collectGarbage(VM *vm) {
 #ifdef DEBUG_LOG_GC
     printf("-- gc begin\n");
     size_t before = vm->bytesAllocated;
