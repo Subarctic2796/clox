@@ -10,6 +10,12 @@
 
 #define NAN_BOXING
 
+#define LOX_MAJOR 0
+#define LOX_MINOR 0
+#define LOX_PATCH 0
+
+#define LOX_VERSION_STRING "0.0.0"
+
 #define LOX_DEBUG
 
 #ifdef LOX_DEBUG // LOX_DEBUG

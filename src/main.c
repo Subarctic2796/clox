@@ -26,7 +26,7 @@ static void repl(VM *vm) {
     linenoiseHistorySave(HIST_FILE);
 }
 
-static char *readFile(const char *path) {
+static const char *readFile(const char *path) {
     FILE *f = fopen(path, "rb");
     if (f == NULL) {
         fprintf(stderr, "Could not open file '%s'\n", path);
@@ -54,9 +54,9 @@ static char *readFile(const char *path) {
 }
 
 static void runFile(VM *vm, const char *path) {
-    char *src = readFile(path);
+    const char *src = readFile(path);
     InterpretResult result = interpret(vm, src);
-    free(src);
+    free((char *)src);
 
     switch (result) {
     case INTERPRET_COMPILE_ERR: exit(65);

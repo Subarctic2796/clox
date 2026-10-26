@@ -5,6 +5,8 @@
 
 #define TABLE_MAX_LOAD 0.75
 
+const Entry EMPTY_ENTRY = {EMPTY_VAL, NIL_VAL};
+
 void initTable(Table *table) { *table = (Table){0}; }
 
 void freeTable(VM *vm, Table *table) {
@@ -55,7 +57,7 @@ bool tableContains(Table *table, Value key) {
 static void adjustCap(VM *vm, Table *table, int cap) {
     Entry *entries = ALLOCATE(Entry, cap);
     for (int i = 0; i < cap; i++) {
-        entries[i] = (Entry){EMPTY_VAL, NIL_VAL};
+        entries[i] = EMPTY_ENTRY;
     }
 
     table->cnt = 0;
@@ -100,7 +102,7 @@ bool tableDelete(Table *table, Value key) {
 
 void tableClear(Table *table) {
     for (int i = 0; i < table->cnt; i++) {
-        table->entries[i] = (Entry){EMPTY_VAL, NIL_VAL};
+        table->entries[i] = EMPTY_ENTRY;
     }
     table->cnt = 0;
 }
@@ -137,10 +139,9 @@ ObjString *tableFindString(Table *table, const char *chars, int len,
 void tableRemoveWhite(Table *table) {
     for (int i = 0; i < table->cap; i++) {
         Entry *entry = &table->entries[i];
-        if (IS_STRING(entry->key)) {
-            ObjString *string = AS_STRING(entry->key);
-            if (!string->obj.isMarked) tableDelete(table, entry->key);
-        }
+        if (!IS_STRING(entry->value)) continue;
+        ObjString *string = AS_STRING(entry->key);
+        if (!string->obj.isMarked) tableDelete(table, entry->key);
     }
 }
 

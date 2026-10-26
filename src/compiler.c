@@ -128,7 +128,7 @@ static void errorAt(Parser *parser, const Token *token, const char *message) {
     switch (token->type) {
     case TOKEN_EOF:   fprintf(stderr, " at end"); break;
     case TOKEN_ERROR: break;
-    default:          fprintf(stderr, " at '%.*s'", token->len, token->start); break;
+    default: fprintf(stderr, " at '%.*s'", token->len, token->start); break;
     }
 #pragma GCC diagnostic pop
 
@@ -777,18 +777,23 @@ static inline void variable(Compiler *c, bool canAssign) {
     namedVariable(c, c->parser->prv, canAssign);
 }
 
-static inline Token syntheticToken(const char *txt, const int len) {
+static inline Token syntheticTokenEx(const char *txt, const int len) {
     Token token = {0};
     token.start = txt;
     token.len = len;
     return token;
 }
 
-static inline uint8_t syntheticIdentifierConst(Compiler *c, const char *txt,
-                                               const int len, bool isVar) {
-    Token tok = syntheticToken(txt, len);
+#define syntheticToken(s) syntheticTokenEx(s, sizeof(s) - 1)
+
+static inline uint8_t syntheticIdentifierConstEx(Compiler *c, const char *txt,
+                                                 const int len, bool isVar) {
+    Token tok = syntheticTokenEx(txt, len);
     return identifierConst(c, &tok, isVar ? IDENT_VAR : IDENT_IDENT, NULL);
 }
+
+#define syntheticIdentifierConst(c, s, isVar)                                  \
+    syntheticIdentifierConstEx(c, s, sizeof(s) - 1, isVar)
 
 static void super_(Compiler *c, bool canAssign) {
     (void)canAssign;
@@ -802,13 +807,13 @@ static void super_(Compiler *c, bool canAssign) {
     consume(c, TOKEN_IDENTIFIER, "Expect superclass method name");
     uint8_t name = identifierConst(c, &c->parser->prv, IDENT_IDENT, NULL);
 
-    namedVariable(c, syntheticToken("this", 4), false);
+    namedVariable(c, syntheticToken("this"), false);
     if (match(c, TOKEN_LPAREN)) {
         uint8_t argCnt = argumentList(c);
-        namedVariable(c, syntheticToken("super", 5), false);
+        namedVariable(c, syntheticToken("super"), false);
         emitOp2Args(c, OP_SUPER_INVOKE, name, argCnt);
     } else {
-        namedVariable(c, syntheticToken("super", 5), false);
+        namedVariable(c, syntheticToken("super"), false);
         emitOpArg(c, OP_GET_SUPER, name);
     }
 }
@@ -1015,7 +1020,7 @@ static inline void classDecl(Compiler *c) {
         }
 
         beginScope(c);
-        addLocal(c, syntheticToken("super", 5));
+        addLocal(c, syntheticToken("super"));
         defineVariable(c, 0);
 
         namedVariable(c, className, false);
@@ -1145,7 +1150,7 @@ static inline bool forIterStmt(Compiler *c) {
     // so now we need to construct the iterator
     // we use the builtin Iter class this will then construct
     // the iterator object once the expression has been evaluated
-    emitOpArg(c, OP_GET_GLOBAL, syntheticIdentifierConst(c, "Iter", 4, true));
+    emitOpArg(c, OP_GET_GLOBAL, syntheticIdentifierConst(c, "Iter", true));
 
     // so we can now compile the iterator expression and store it in a hidden
     // variable, the space in the name ensures that it won't collide with
@@ -1165,7 +1170,7 @@ static inline bool forIterStmt(Compiler *c) {
     }
 
     // add `it `
-    int itSlot = addLocal(c, syntheticToken("it ", 3));
+    int itSlot = addLocal(c, syntheticToken("it "));
     defineVariable(c, 0);
     // add `i` or `ix` and initialize it
     int iSlot = addLocal(c, first);
@@ -1188,7 +1193,7 @@ static inline bool forIterStmt(Compiler *c) {
 
     // advance the iterator
     emitOpArg(c, OP_GET_LOCAL, itSlot);
-    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "next", 4, false), 0);
+    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "next", false), 0);
 
     // test the condition
     loop.end = emitJump(c, OP_JUMP_IF_FALSE);
@@ -1196,16 +1201,15 @@ static inline bool forIterStmt(Compiler *c) {
 
     // update i
     emitOpArg(c, OP_GET_LOCAL, itSlot);
-    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "value", 5, false),
-                0);
+    emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "value", false), 0);
     emitOpArg(c, OP_SET_LOCAL, iSlot);
     emitPop(c);
 
     // update ix if we need to
     if (isIndexAndItem) {
         emitOpArg(c, OP_GET_LOCAL, itSlot);
-        emitOp2Args(c, OP_INVOKE,
-                    syntheticIdentifierConst(c, "index", 5, false), 0);
+        emitOp2Args(c, OP_INVOKE, syntheticIdentifierConst(c, "index", false),
+                    0);
         emitOpArg(c, OP_SET_LOCAL, ixSlot);
         emitPop(c);
     }

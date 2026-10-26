@@ -81,7 +81,9 @@ static const char *findGlobalNameFromIndex(const VM *vm, int index) {
 
         if (index == (int)AS_NUMBER(entry.value)) return AS_CSTRING(entry.key);
     }
-    return NULL;
+    static char buf[80];
+    snprintf(buf, sizeof(buf), "UNABLE TO FIND GLOBAL WITH INDEX: %d", index);
+    return buf;
 }
 
 static bool call(VM *vm, ObjClosure *closure, int argc) {
