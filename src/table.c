@@ -101,7 +101,7 @@ bool tableDelete(Table *table, Value key) {
 }
 
 void tableClear(Table *table) {
-    for (int i = 0; i < table->cnt; i++) {
+    for (int i = 0; i < table->cap; i++) {
         table->entries[i] = EMPTY_ENTRY;
     }
     table->cnt = 0;
