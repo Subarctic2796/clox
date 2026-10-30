@@ -16,6 +16,7 @@
 #endif
 
 static inline void push(VM *vm, Value value) { *vm->sp++ = value; }
+static inline void drop(VM *vm) { vm->sp--; }
 static inline Value pop(VM *vm) { return *(--vm->sp); }
 static inline Value peek(VM *vm, int dist) { return vm->sp[-1 - dist]; }
 
@@ -195,7 +196,7 @@ static bool bindMethod(VM *vm, ObjClass *klass, Value name) {
     }
 
     ObjBoundMethod *bound = newBoundMethod(vm, peek(vm, 0), AS_CLOSURE(method));
-    pop(vm); // pop 'this'
+    drop(vm); // pop 'this'
     push(vm, OBJ_VAL(bound));
     return true;
 }
@@ -235,7 +236,7 @@ static inline void defineMethod(VM *vm, Value name) {
     Value method = peek(vm, 0);
     ObjClass *klass = AS_CLASS(peek(vm, 1));
     tableSet(vm, &klass->methods, name, method);
-    pop(vm);
+    drop(vm);
 }
 
 static inline bool isFalsey(Value value) {
@@ -427,9 +428,11 @@ static inline bool doIndexedSet(VM *vm) {
 }
 
 static InterpretResult run(VM *vm) {
+    Value RESULT = NIL_VAL;
     CallFrame *frame = &vm->frames[vm->frameCount - 1];
 
 #define PUSH(value) (*vm->sp++ = value)
+#define DROP()      (vm->sp--)
 #define POP()       (*(--vm->sp))
 #define PEEK(dist)  (*(vm->sp - 1 - dist))
 #define READ_BYTE() (*frame->ip++)
@@ -485,7 +488,7 @@ static InterpretResult run(VM *vm) {
         case OP_NIL:       PUSH(NIL_VAL); break;
         case OP_TRUE:      PUSH(BOOL_VAL(true)); break;
         case OP_FALSE:     PUSH(BOOL_VAL(false)); break;
-        case OP_POP:       (void)POP(); break;
+        case OP_POP:       RESULT = POP(); break;
         case OP_GET_INDEX: {
             if (!isIndexable(PEEK(1))) {
                 runtimeError(vm, "%s is not an indexable type",
@@ -514,9 +517,9 @@ static InterpretResult run(VM *vm) {
             }
             PUSH(value);
         } break;
-        case OP_DEFINE_GLOBAL: {
+        case OP_DEFINE_GLOBAL:
             vm->globalValues.values[READ_BYTE()] = POP();
-        } break;
+            break;
         case OP_SET_GLOBAL: {
             int index = READ_BYTE();
             if (IS_EMPTY(vm->globalValues.values[index])) {
@@ -544,7 +547,7 @@ static InterpretResult run(VM *vm) {
             Value name = READ_CONST();
             Value value = EMPTY_VAL;
             if (tableGet(&instance->fields, name, &value)) {
-                (void)POP(); // instance
+                DROP(); // instance
                 PUSH(value);
                 break;
             }
@@ -561,7 +564,7 @@ static InterpretResult run(VM *vm) {
             ObjInstance *instance = AS_INSTANCE(PEEK(1));
             tableSet(vm, &instance->fields, READ_CONST(), PEEK(0));
             Value value = POP();
-            (void)POP(); // instance
+            DROP(); // instance
             PUSH(value);
         } break;
         case OP_GET_SUPER: {
@@ -609,14 +612,8 @@ static InterpretResult run(VM *vm) {
             vm->sp[-1] = NUMBER_VAL(-AS_NUMBER(vm->sp[-1]));
         } break;
         case OP_PRINT: {
-#ifdef LOX_DEBUG
-            printf("\033[1;33m");
-#endif /* ifdef LOX_DEBUG */
             printValue(POP());
-#ifdef LOX_DEBUG
-            printf("\033[0m");
-#endif /* ifdef LOX_DEBUG */
-            printf("\n");
+            puts("");
         } break;
         case OP_JUMP: {
             uint16_t offset = READ_SHORT();
@@ -668,14 +665,18 @@ static InterpretResult run(VM *vm) {
         } break;
         case OP_CLOSE_UPVALUE: {
             closeUpvalues(vm, vm->sp - 1);
-            (void)POP();
+            DROP();
         } break;
         case OP_RETURN: {
             Value result = POP();
             closeUpvalues(vm, frame->slots);
             vm->frameCount--;
             if (vm->frameCount == 0) {
-                (void)POP();
+                DROP();
+
+                printValue(RESULT);
+                puts("");
+
                 return INTERPRET_OK;
             }
 
@@ -726,7 +727,7 @@ static InterpretResult run(VM *vm) {
 
             ObjClass *subclass = AS_CLASS(PEEK(0));
             tableAddAll(vm, &AS_CLASS(superclass)->methods, &subclass->methods);
-            (void)POP(); // subclass
+            DROP(); // subclass
         } break;
         case OP_METHOD: defineMethod(vm, READ_CONST()); break;
         case OP_NOP:    UNREACHABLE(); break;
@@ -735,6 +736,7 @@ static InterpretResult run(VM *vm) {
 
 #undef PUSH
 #undef POP
+#undef DROP
 #undef PEEK
 #undef READ_BYTE
 #undef READ_SHORT

@@ -118,8 +118,12 @@ static void blackenObject(VM *vm, Obj *object) {
 static void freeObject(VM *vm, Obj *object) {
 #ifdef DEBUG_LOG_GC
     printf("%p free %s ", (void *)object, ObjTypeString(object->type));
-    printValue(OBJ_VAL(object));
-    printf("\n");
+    if (object->type != OBJ_FUNCTION) {
+        printValue(OBJ_VAL(object));
+        puts("");
+    } else {
+        printf("<fn (?)>\n");
+    }
 #endif // ifdef DEBUG_LOG_GC
 
     switch (object->type) {
@@ -146,6 +150,7 @@ static void freeObject(VM *vm, Obj *object) {
     case OBJ_STRING: {
         ObjString *string = (ObjString *)object;
         FREE_ARRAY(char, string->chars, string->length + 1);
+        string->chars = NULL;
         FREE(ObjString, object);
     } break;
     case OBJ_ARRAY: {

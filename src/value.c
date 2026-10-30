@@ -23,6 +23,10 @@ void writeValueArray(VM *vm, ValueArray *array, Value value) {
 }
 
 void printValue(Value value) {
+#ifdef LOX_DEBUG
+    printf("\033[1;33m");
+#endif /* ifdef LOX_DEBUG */
+
 #ifdef NAN_BOXING
     if (IS_BOOL(value)) {
         printf(AS_BOOL(value) ? "true" : "false");
@@ -44,6 +48,10 @@ void printValue(Value value) {
     case VAL_OBJ:    printObject(value);
     }
 #endif
+
+#ifdef LOX_DEBUG
+    printf("\033[0m");
+#endif /* ifdef LOX_DEBUG */
 }
 
 bool valuesEqual(Value a, Value b) {

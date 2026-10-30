@@ -108,10 +108,26 @@ typedef struct Compiler {
 
     // scope info
     int scopeDepth;
+    // lambda id
+    int lambdaID;
 } Compiler;
 
 static VM *vm = NULL;
 static Compiler *current = NULL;
+
+static inline Token syntheticTokenEx(const char *txt, const int len) {
+    Token token = {0};
+    token.start = txt;
+    token.len = len;
+    return token;
+}
+
+#define syntheticToken(s) syntheticTokenEx(s, sizeof(s) - 1)
+
+static inline bool identifiersEqual(const Token *a, const Token *b) {
+    if (a->len != b->len) return false;
+    return memcmp(a->start, b->start, a->len) == 0;
+}
 
 static inline Chunk *curChunk(const Compiler *compiler) {
     return &compiler->fn->chunk;
@@ -268,10 +284,24 @@ static void initCompiler(Compiler *compiler, Compiler *enclosing,
     compiler->currentClass = enclosing == NULL ? NULL : enclosing->currentClass;
     compiler->type = type;
     compiler->fn = newFunction(vm);
+    compiler->lambdaID = enclosing == NULL ? 0 : enclosing->lambdaID;
     current = compiler;
 
     if (type != TYPE_SCRIPT) {
-        compiler->fn->name = copyString(vm, parser->prv.start, parser->prv.len);
+        static const Token lambda = {0, "fun", sizeof("fun") - 1, 0};
+
+        Token name = parser->prv;
+
+        if (identifiersEqual(&lambda, &name)) {
+            static char BUF[80] = {0};
+            name.len = snprintf(NULL, 0, "lambda%d[%p]", compiler->lambdaID,
+                                (void *)compiler);
+            snprintf(BUF, sizeof(BUF), "lambda%d[%p]", compiler->lambdaID,
+                     (void *)compiler);
+            compiler->lambdaID++;
+            name.start = BUF;
+        }
+        compiler->fn->name = copyString(vm, name.start, name.len);
     }
 
     Local *local = &compiler->locals[compiler->localCount++];
@@ -452,11 +482,6 @@ static uint8_t identifierConst(Compiler *c, Token *name, IdentType type,
     }
     default: return 0;
     }
-}
-
-static inline bool identifiersEqual(Token *a, Token *b) {
-    if (a->len != b->len) return false;
-    return memcmp(a->start, b->start, a->len) == 0;
 }
 
 static int resolveLocal(Compiler *compiler, Token *name) {
@@ -776,15 +801,6 @@ static void namedVariable(Compiler *c, Token name, bool canAssign) {
 static inline void variable(Compiler *c, bool canAssign) {
     namedVariable(c, c->parser->prv, canAssign);
 }
-
-static inline Token syntheticTokenEx(const char *txt, const int len) {
-    Token token = {0};
-    token.start = txt;
-    token.len = len;
-    return token;
-}
-
-#define syntheticToken(s) syntheticTokenEx(s, sizeof(s) - 1)
 
 static inline uint8_t syntheticIdentifierConstEx(Compiler *c, const char *txt,
                                                  const int len, bool isVar) {

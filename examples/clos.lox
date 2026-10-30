@@ -1,9 +1,7 @@
 fun outer() {
   var x = "value";
   fun middle() {
-    fun inner() {
-      print x;
-    }
+    fun inner() { print x; }
 
     print "create inner closure";
     return inner;
